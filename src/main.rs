@@ -78,6 +78,7 @@ fn rocket() -> _ {
                 routes::ui::index,
                 routes::ui::listing,
                 routes::ui::player,
+                routes::ui::embed,
                 routes::ui::upload_form,
                 routes::ui::admin_panel,
                 routes::ui::ui_delete,

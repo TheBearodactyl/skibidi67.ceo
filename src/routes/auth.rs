@@ -1,12 +1,3 @@
-//! OAuth 2.0 routes for the osu! "Sign in with osu!" flow.
-//!
-//! Flow:
-//!  1. User visits `GET /auth/login`  → redirected to osu! authorization page.
-//!  2. osu! redirects back to `GET /auth/callback?code=...&state=...`.
-//!  3. We exchange the code for tokens, fetch the user's profile,
-//!     create a session, set a private cookie, and redirect to `/videos`.
-//!  4. `GET /auth/logout` clears the cookie and the session entry.
-
 use {
     crate::{
         auth::{AuthenticatedUser, SESSION_COOKIE},

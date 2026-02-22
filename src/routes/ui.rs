@@ -1,15 +1,10 @@
-//! HTML UI routes — renders Tera templates from `templates/`.
-//! No HTML is constructed in Rust; all markup lives in the template files.
-
 use {
     crate::{auth::AuthenticatedUser, models::OsuUser, state::AppState},
+    rand::seq::IndexedRandom,
     rocket::{State, get, response::Redirect},
     rocket_dyn_templates::{Template, context},
     serde::Serialize,
 };
-
-// ── View models ───────────────────────────────────────────────────────────────
-// Tera needs plain serialisable types, not DashMap references.
 
 #[derive(Serialize)]
 struct UserCtx {
@@ -57,8 +52,6 @@ impl VideoCtx {
     }
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-
 #[get("/")]
 pub fn index() -> Redirect {
     Redirect::to("/ui")
@@ -76,12 +69,33 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
         .collect();
     videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
 
+    let featured: Option<VideoCtx> = {
+        let sfw: Vec<_> = videos.iter().filter(|v| !v.nsfw).collect();
+        let pool = if sfw.is_empty() {
+            videos.iter().collect::<Vec<_>>()
+        } else {
+            sfw
+        };
+        pool.choose(&mut rand::rng()).map(|v| VideoCtx {
+            id: v.id.clone(),
+            title: v.title.clone(),
+            content_type: v.content_type.clone(),
+            size_bytes: v.size_bytes,
+            sha256: v.sha256.clone(),
+            uploaded_by_name: v.uploaded_by_name.clone(),
+            uploaded_at: v.uploaded_at.clone(),
+            nsfw: v.nsfw,
+            references_id: v.references_id.clone(),
+        })
+    };
+
     Template::render(
         "listing",
         context! {
             user: osu_user.map(UserCtx::from_osu),
             is_admin,
             videos,
+            featured,
         },
     )
 }
@@ -92,12 +106,28 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
     let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
     let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
+    let embed_url = format!("https://skibidi67.ceo/e/{}", id);
 
     Template::render(
         "player",
         context! {
             user: osu_user.map(UserCtx::from_osu),
             is_admin,
+            video,
+            video_url,
+            embed_url,
+        },
+    )
+}
+
+#[get("/e/<id>")]
+pub fn embed(id: &str, state: &State<AppState>) -> Template {
+    let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
+    let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
+
+    Template::render(
+        "embed",
+        context! {
             video,
             video_url,
         },

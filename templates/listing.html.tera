@@ -6,6 +6,23 @@
 {% block content %}
 <h2>Videos</h2>
 
+{% if featured %}
+<div style="margin-bottom:2rem">
+  <p><strong>Random pick:</strong> <a href="/ui/videos/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
+  {% if featured.nsfw %}
+  <p><strong>[NSFW]</strong> <a href="#" onclick="reveal_featured(); return false;">Click to reveal</a></p>
+  <video id="featured-v" controls style="filter: blur(20px); max-width:100%">
+    <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
+  </video>
+  {% else %}
+  <video controls style="max-width:100%">
+    <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
+  </video>
+  {% endif %}
+</div>
+<hr>
+{% endif %}
+
 {% if videos | length == 0 %}
   <p>No videos yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</p>
 {% else %}
@@ -21,3 +38,13 @@
   </ul>
 {% endif %}
 {% endblock %}
+
+{% block scripts %}
+<script>
+function reveal_featured() {
+  var v = document.getElementById('featured-v');
+  if (v) v.style.filter = '';
+}
+</script>
+{% endblock %}
+
