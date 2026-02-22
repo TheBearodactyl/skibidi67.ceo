@@ -194,6 +194,7 @@ pub async fn ui_delete(
         match state.videos.remove(id) {
             None => ("Error".to_owned(), "Video not found.".to_owned()),
             Some((_, meta)) => {
+                state.delete_video_meta(&meta.id);
                 if meta.references_id.is_none() {
                     let still_referenced = state
                         .videos

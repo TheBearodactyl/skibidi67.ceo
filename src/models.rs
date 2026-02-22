@@ -27,7 +27,7 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoMeta {
     pub id: String,
     pub title: String,

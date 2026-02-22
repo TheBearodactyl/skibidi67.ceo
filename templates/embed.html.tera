@@ -18,7 +18,6 @@
   <meta property="og:video:height" content="720">
 
   <meta name="twitter:card" content="player">
-  <meta name="twitter:title" content="{{ video.title }}">
   <meta name="twitter:player" content="{{ video_url }}">
   <meta name="twitter:player:width" content="1280">
   <meta name="twitter:player:height" content="720">

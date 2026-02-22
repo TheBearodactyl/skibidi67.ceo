@@ -146,6 +146,7 @@ pub async fn upload_video(
             };
 
             state.videos.insert(video_id.clone(), meta.clone());
+            state.persist_video(&meta);
 
             Ok((
                 Status::Created,
@@ -181,6 +182,7 @@ pub async fn upload_video(
 
             slot.insert(video_id.clone());
             state.videos.insert(video_id.clone(), meta.clone());
+            state.persist_video(&meta);
 
             Ok((
                 Status::Created,
@@ -222,6 +224,9 @@ pub fn patch_nsfw(
         None => Err(AppError::VideoNotFound),
         Some(mut v) => {
             v.nsfw = body.nsfw;
+            let updated = v.clone();
+            drop(v);
+            state.persist_video(&updated);
             Ok(Json(serde_json::json!({
                 "message": "NSFW flag updated",
                 "id": id,
@@ -249,6 +254,8 @@ pub async fn delete_video(
     state: &State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let (_, meta) = state.videos.remove(id).ok_or(AppError::VideoNotFound)?;
+
+    state.delete_video_meta(id);
 
     if meta.references_id.is_none() {
         let has_references = state
