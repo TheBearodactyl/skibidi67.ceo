@@ -1,0 +1,23 @@
+{% extends "base" %}
+
+{% block title %}Videos — skibidi67.ceo{% endblock %}
+{% block og_title %}Videos — skibidi67.ceo{% endblock %}
+
+{% block content %}
+<h2>Videos</h2>
+
+{% if videos | length == 0 %}
+  <p>No videos yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</p>
+{% else %}
+  <ul>
+    {% for v in videos %}
+    <li>
+      <a href="/ui/videos/{{ v.id }}">{{ v.title }}</a>
+      {% if v.nsfw %}[NSFW]{% endif %}
+      {% if v.references_id %}[dedup]{% endif %}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_bytes }} bytes
+    </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+{% endblock %}

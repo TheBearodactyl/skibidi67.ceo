@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    env_file: .env
+    environment:
+      - UPLOAD_DIR=/app/uploads
+      - ROCKET_ADDRESS=0.0.0.0
+      - ROCKET_PORT=8090
+    volumes:
+      - ./uploads:/app/uploads

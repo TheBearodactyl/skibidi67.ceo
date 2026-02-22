@@ -1,0 +1,78 @@
+{% extends "base" %}
+
+{% block title %}Upload — skibidi67.ceo{% endblock %}
+
+{% block content %}
+<h2>Upload a video</h2>
+
+{% if not user %}
+  <p>You must be <a href="/auth/login">signed in</a> to upload.</p>
+{% else %}
+  <form id="upload-form">
+    <p>
+      <label for="title">Title</label><br>
+      <input id="title" type="text" required>
+    </p>
+    <p>
+      <label for="file">Video file (max 15 MiB)</label><br>
+      <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-msvideo" required>
+    </p>
+    <p>
+      <label>
+        <input id="nsfw" type="checkbox">
+        Mark as NSFW
+      </label>
+    </p>
+    <p>
+      <button type="submit">Upload</button>
+    </p>
+    <p id="progress" hidden>Uploading…</p>
+  </form>
+
+  <pre id="result" hidden></pre>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if user %}
+<script>
+document.getElementById('upload-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const title  = document.getElementById('title').value.trim();
+  const file   = document.getElementById('file').files[0];
+  const nsfw   = document.getElementById('nsfw').checked;
+  const prog   = document.getElementById('progress');
+  const result = document.getElementById('result');
+
+  if (!file) { alert('Please choose a file.'); return; }
+
+  prog.hidden = false;
+  prog.textContent = 'Uploading…';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw);
+  xhr.setRequestHeader('Content-Type', file.type);
+
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable)
+      prog.textContent = 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%';
+  };
+
+  xhr.onload = () => {
+    const data = JSON.parse(xhr.responseText);
+    result.hidden = false;
+    result.textContent = JSON.stringify(data, null, 2);
+    if (xhr.status === 201) {
+      prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
+      setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+    } else {
+      prog.textContent = 'Upload failed.';
+    }
+  };
+
+  xhr.onerror = () => { prog.textContent = 'Network error.'; };
+  xhr.send(file);
+});
+</script>
+{% endif %}
+{% endblock %}

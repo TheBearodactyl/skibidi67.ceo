@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}skibidi67.ceo{% endblock %}</title>
+  <meta property="og:site_name" content="skibidi67.ceo">
+  <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Video sharing for osu! players{% endblock %}">
+  {% block og_extra %}{% endblock %}
+</head>
+<body>
+
+<header>
+  <h1><a href="/ui">skibidi67.ceo</a></h1>
+  <nav>
+    {% if user %}
+      Signed in as <strong>{{ user.username }}</strong>
+      | <a href="/ui/upload">Upload</a>
+      {% if is_admin %}| <a href="/ui/admin">Admin</a>{% endif %}
+      | <a href="/auth/logout">Sign out</a>
+    {% else %}
+      <a href="/auth/login">Sign in with osu!</a>
+    {% endif %}
+  </nav>
+  <hr>
+</header>
+
+<main>
+  {% block content %}{% endblock %}
+
+  <p>consider sending me some clams over on my <a href="https://ko-fi.com/thebearodactyl">ko-fi</a> :D</p>
+</main>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

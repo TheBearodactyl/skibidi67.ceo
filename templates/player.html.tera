@@ -1,0 +1,85 @@
+{% extends "base" %}
+
+{% block title %}{{ video.title }} — skibidi67.ceo{% endblock %}
+{% block og_title %}{{ video.title }}{% endblock %}
+{% block og_description %}Watch {{ video.title }} on skibidi67.ceo — uploaded by {{ video.uploaded_by_name }}{% endblock %}
+
+{% block og_extra %}
+<meta property="og:type" content="video.other">
+<meta property="og:video" content="{{ video_url }}">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1280">
+<meta property="og:video:height" content="720">
+<meta name="twitter:card" content="player">
+<meta name="twitter:player" content="{{ video_url }}">
+<meta name="twitter:player:width" content="1280">
+<meta name="twitter:player:height" content="720">
+{% endblock %}
+
+{% block content %}
+<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}</h2>
+
+{% if video.references_id %}
+<p><em>This post shares a file with <a href="/ui/videos/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
+{% endif %}
+
+{% if is_admin %}
+<p>
+  <button onclick="delete_video('{{ video.id }}')">Delete</button>
+  <button onclick="toggle_nsfw('{{ video.id }}', {{ video.nsfw }})">
+    {% if video.nsfw %}Mark as SFW{% else %}Mark as NSFW{% endif %}
+  </button>
+</p>
+{% endif %}
+
+{% if video.nsfw %}
+<p><strong>[NSFW]</strong> <a href="#" onclick="reveal(); return false;">Click to reveal</a></p>
+<video id="v" controls style="filter: blur(20px)">
+  <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
+</video>
+{% else %}
+<video controls>
+  <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
+</video>
+{% endif %}
+
+<dl>
+  <dt>Uploaded by</dt>
+  <dd>{{ video.uploaded_by_name }}</dd>
+  <dt>Date</dt>
+  <dd>{{ video.uploaded_at }}</dd>
+  <dt>Size</dt>
+  <dd>{{ video.size_bytes }} bytes</dd>
+  <dt>SHA-256</dt>
+  <dd><code>{{ video.sha256 }}</code></dd>
+</dl>
+
+<p><a href="/ui">← Back</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function reveal() {
+  var v = document.getElementById('v');
+  if (v) v.style.filter = '';
+}
+
+async function delete_video(id) {
+  if (!confirm('Delete this video?')) return;
+  const res = await fetch('/videos/' + id, { method: 'DELETE' });
+  if (res.ok) window.location.href = '/ui';
+  else alert('Error: ' + (await res.json()).error);
+}
+
+async function toggle_nsfw(id, current) {
+  const res = await fetch('/videos/' + id + '/nsfw', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nsfw: !current }),
+  });
+  if (res.ok) window.location.reload();
+  else alert('Error: ' + (await res.json()).error);
+}
+</script>
+{% endblock %}
+

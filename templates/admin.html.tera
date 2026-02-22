@@ -1,0 +1,72 @@
+{% extends "base" %}
+
+{% block title %}Admin — skibidi67.ceo{% endblock %}
+
+{% block content %}
+{% if not is_admin %}
+  <p>Admin access required. <a href="/ui">← Back</a></p>
+{% else %}
+  <h2>Admin — Moderation</h2>
+  <p>{{ video_count }} posts, {{ disk_kib }} KiB on disk (deduplicated)</p>
+
+  {% if videos | length == 0 %}
+    <p>No videos yet.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Uploader</th>
+          <th>Date</th>
+          <th>Size</th>
+          <th>Flags</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in videos %}
+        <tr id="row-{{ v.id }}">
+          <td><a href="/ui/videos/{{ v.id }}">{{ v.title }}</a></td>
+          <td>{{ v.uploaded_by_name }}</td>
+          <td>{{ v.uploaded_at }}</td>
+          <td>{{ v.size_bytes }} B</td>
+          <td>
+            {% if v.nsfw %}NSFW{% endif %}
+            {% if v.references_id %}dedup{% endif %}
+          </td>
+          <td>
+            <button onclick="toggle_nsfw('{{ v.id }}', {{ v.nsfw }})">
+              {% if v.nsfw %}Mark SFW{% else %}Mark NSFW{% endif %}
+            </button>
+            <button onclick="delete_video('{{ v.id }}')">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if is_admin %}
+<script>
+async function delete_video(id) {
+  if (!confirm('Delete ' + id + '?')) return;
+  const res = await fetch('/videos/' + id, { method: 'DELETE' });
+  if (res.ok) document.getElementById('row-' + id)?.remove();
+  else alert('Error: ' + (await res.json()).error);
+}
+
+async function toggle_nsfw(id, current) {
+  const res = await fetch('/videos/' + id + '/nsfw', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nsfw: !current }),
+  });
+  if (res.ok) window.location.reload();
+  else alert('Error: ' + (await res.json()).error);
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base" %}
+
+{% block title %}{{ title }} — skibidi67.ceo{% endblock %}
+
+{% block content %}
+<h2>{{ title }}</h2>
+<p>{{ message }}</p>
+<p><a href="/ui">← Back</a></p>
+{% endblock %}
+
