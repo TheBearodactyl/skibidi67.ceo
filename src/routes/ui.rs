@@ -6,6 +6,16 @@ use {
     serde::Serialize,
 };
 
+#[derive(Serialize)]
+struct CommentCtx {
+    id: String,
+    author_provider: String,
+    author_id: u64,
+    author_name: String,
+    text: String,
+    created_at: String,
+}
+
 fn format_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
@@ -41,7 +51,7 @@ impl UserCtx {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct VideoCtx {
     id: String,
     title: String,
@@ -50,9 +60,13 @@ struct VideoCtx {
     size_human: String,
     sha256: String,
     tlsh_hash: Option<String>,
+    uploaded_by_provider: String,
+    uploaded_by_id: u64,
     uploaded_by_name: String,
     uploaded_at: String,
     nsfw: bool,
+    unlisted: bool,
+    comments_disabled: bool,
     references_id: Option<String>,
 }
 
@@ -66,9 +80,13 @@ impl VideoCtx {
             size_human: format_size(v.size_bytes),
             sha256: v.sha256.clone(),
             tlsh_hash: v.tlsh_hash.clone(),
+            uploaded_by_provider: v.uploaded_by_provider.clone(),
+            uploaded_by_id: v.uploaded_by_id,
             uploaded_by_name: v.uploaded_by_name.clone(),
             uploaded_at: v.uploaded_at.format("%Y-%m-%d %H:%M UTC").to_string(),
             nsfw: v.nsfw,
+            unlisted: v.unlisted,
+            comments_disabled: v.comments_disabled,
             references_id: v.references_id.clone(),
         }
     }
@@ -88,6 +106,7 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
     let mut videos: Vec<VideoCtx> = state
         .videos
         .iter()
+        .filter(|e| !e.value().unlisted)
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
     videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
@@ -99,19 +118,7 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
         } else {
             sfw
         };
-        pool.choose(&mut rand::rng()).map(|v| VideoCtx {
-            id: v.id.clone(),
-            title: v.title.clone(),
-            content_type: v.content_type.clone(),
-            size_bytes: v.size_bytes,
-            size_human: v.size_human.clone(),
-            sha256: v.sha256.clone(),
-            tlsh_hash: v.tlsh_hash.clone(),
-            uploaded_by_name: v.uploaded_by_name.clone(),
-            uploaded_at: v.uploaded_at.clone(),
-            nsfw: v.nsfw,
-            references_id: v.references_id.clone(),
-        })
+        pool.choose(&mut rand::rng()).map(|v| (*v).clone())
     };
 
     Template::render(
@@ -132,8 +139,40 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
+
+    if video.is_none() {
+        return Template::render(
+            "message",
+            context! {
+                user: platform_user.map(UserCtx::from_platform),
+                is_admin,
+                has_github_oauth,
+                title: "Not Found",
+                message: "This video does not exist or has been deleted.",
+            },
+        );
+    }
+
     let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
     let embed_url = format!("https://skibidi67.ceo/e/{}", id);
+
+    let comments: Vec<CommentCtx> = state
+        .comments
+        .get(id)
+        .map(|c| {
+            c.value()
+                .iter()
+                .map(|c| CommentCtx {
+                    id: c.id.clone(),
+                    author_provider: c.author_provider.clone(),
+                    author_id: c.author_id,
+                    author_name: c.author_name.clone(),
+                    text: c.text.clone(),
+                    created_at: c.created_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     Template::render(
         "player",
@@ -144,6 +183,7 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
             video,
             video_url,
             embed_url,
+            comments,
         },
     )
 }
@@ -151,6 +191,17 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
 #[get("/e/<id>")]
 pub fn embed(id: &str, state: &State<AppState>) -> Template {
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
+
+    if video.is_none() {
+        return Template::render(
+            "message",
+            context! {
+                title: "Not Found",
+                message: "This video does not exist or has been deleted.",
+            },
+        );
+    }
+
     let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
 
     Template::render(
@@ -231,6 +282,7 @@ pub async fn ui_delete(
             None => ("Error".to_owned(), "Video not found.".to_owned()),
             Some((_, meta)) => {
                 state.delete_video_meta(&meta.id);
+                state.delete_comments(&meta.id);
                 if meta.references_id.is_none() {
                     let still_referenced = state
                         .videos

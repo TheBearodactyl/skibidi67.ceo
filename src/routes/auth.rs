@@ -26,8 +26,11 @@ const GITHUB_USER_URL: &str = "https://api.github.com/user";
 
 #[get("/auth/login")]
 pub fn login(state: &State<AppState>) -> Redirect {
-    let csrf_state = Uuid::new_v4().to_string();
+    if state.pending_states.len() > 10_000 {
+        state.pending_states.clear();
+    }
 
+    let csrf_state = Uuid::new_v4().to_string();
     state.pending_states.insert(csrf_state.clone(), ());
 
     let url = format!(
@@ -98,6 +101,8 @@ pub async fn callback(
     let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
     cookie.set_http_only(true);
     cookie.set_same_site(SameSite::Lax);
+    cookie.set_secure(true);
+    cookie.set_path("/");
     cookies.add(cookie);
 
     Ok(Redirect::to("/ui"))
@@ -109,6 +114,10 @@ pub fn github_login(state: &State<AppState>) -> Result<Redirect, AppError> {
         .github_oauth
         .as_ref()
         .ok_or(AppError::Internal("GitHub OAuth not configured".to_owned()))?;
+
+    if state.pending_states.len() > 10_000 {
+        state.pending_states.clear();
+    }
 
     let csrf_state = Uuid::new_v4().to_string();
     state.pending_states.insert(csrf_state.clone(), ());
@@ -184,18 +193,20 @@ pub async fn github_callback(
     let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
     cookie.set_http_only(true);
     cookie.set_same_site(SameSite::Lax);
+    cookie.set_secure(true);
+    cookie.set_path("/");
     cookies.add(cookie);
 
     Ok(Redirect::to("/ui"))
 }
 
 #[get("/auth/logout")]
-pub fn logout(app_state: &State<AppState>, cookies: &CookieJar<'_>) -> Json<serde_json::Value> {
+pub fn logout(app_state: &State<AppState>, cookies: &CookieJar<'_>) -> Redirect {
     if let Some(cookie) = cookies.get(SESSION_COOKIE) {
         app_state.sessions.remove(cookie.value());
         cookies.remove(Cookie::from(SESSION_COOKIE));
     }
-    Json(serde_json::json!({ "message": "Logged out successfully" }))
+    Redirect::to("/ui")
 }
 
 #[get("/auth/me")]
@@ -218,12 +229,16 @@ pub fn me_unauthenticated() -> (Status, Json<serde_json::Value>) {
 }
 
 fn urlencoded(s: &str) -> String {
-    s.chars()
-        .flat_map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => {
-                vec![c]
+    let mut out = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
             }
-            _ => format!("%{:02X}", c as u32).chars().collect(),
-        })
-        .collect()
+            _ => {
+                out.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    out
 }

@@ -3,7 +3,12 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct OsuTokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -20,6 +25,7 @@ pub struct OsuUser {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct GithubTokenResponse {
     pub access_token: String,
     pub token_type: String,
@@ -62,6 +68,7 @@ impl PlatformUser {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Session {
     pub user: PlatformUser,
     pub access_token: String,
@@ -79,9 +86,27 @@ pub struct VideoMeta {
     pub sha256: String,
     #[serde(default)]
     pub tlsh_hash: Option<String>,
+    #[serde(default)]
+    pub uploaded_by_provider: String,
     pub uploaded_by_id: u64,
     pub uploaded_by_name: String,
     pub uploaded_at: DateTime<Utc>,
     pub nsfw: bool,
+    #[serde(default)]
+    pub unlisted: bool,
+    #[serde(default = "default_true")]
+    pub comments_disabled: bool,
     pub references_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Comment {
+    pub id: String,
+    pub video_id: String,
+    #[serde(default)]
+    pub author_provider: String,
+    pub author_id: u64,
+    pub author_name: String,
+    pub text: String,
+    pub created_at: DateTime<Utc>,
 }

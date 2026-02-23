@@ -32,6 +32,7 @@
           <td>{{ v.size_human }}</td>
           <td>
             {% if v.nsfw %}NSFW{% endif %}
+            {% if v.unlisted %}unlisted{% endif %}
             {% if v.references_id %}dedup{% endif %}
           </td>
           <td>

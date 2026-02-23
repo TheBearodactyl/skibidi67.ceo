@@ -1,8 +1,8 @@
 use {
     crate::{
         auth::{AdminUser, AuthenticatedUser},
-        error::AppError,
-        models::VideoMeta,
+        error::{AppError, AppResult},
+        models::{Comment, VideoMeta},
         state::AppState,
     },
     hex::ToHex,
@@ -18,6 +18,7 @@ use {
     serde::Deserialize,
     sha2::{Digest, Sha256},
     std::path::Path,
+    tlsh2::TlshDefaultBuilder,
     tokio::io::AsyncWriteExt,
     uuid::Uuid,
 };
@@ -63,12 +64,18 @@ impl<'r> rocket::response::Responder<'r, 'static> for VideoResponse {
             rocket::http::Status::Ok
         };
 
-        rocket::response::Response::build()
+        let mut builder = rocket::response::Response::build();
+        builder
             .status(status)
             .raw_header("Content-Type", self.content_type)
             .raw_header("Content-Length", self.data.len().to_string())
-            .raw_header("Accept-Ranges", "bytes")
-            .raw_header("Content-Range", self.content_range)
+            .raw_header("Accept-Ranges", "bytes");
+
+        if !self.content_range.is_empty() {
+            builder.raw_header("Content-Range", self.content_range);
+        }
+
+        builder
             .sized_body(self.data.len(), std::io::Cursor::new(self.data))
             .ok()
     }
@@ -79,6 +86,7 @@ pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
     let mut videos: Vec<VideoMeta> = state
         .videos
         .iter()
+        .filter(|entry| !entry.value().unlisted)
         .map(|entry| entry.value().clone())
         .collect();
 
@@ -87,7 +95,7 @@ pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
 }
 
 #[get("/videos/<id>")]
-pub fn get_video(id: &str, state: &State<AppState>) -> Result<Json<VideoMeta>, AppError> {
+pub fn get_video(id: &str, state: &State<AppState>) -> AppResult<Json<VideoMeta>> {
     state
         .videos
         .get(id)
@@ -117,6 +125,15 @@ pub async fn stream_video(
     let file_bytes = fs::read(&file_path).await?;
     let file_size = file_bytes.len() as u64;
 
+    if file_size == 0 {
+        return Ok(VideoResponse {
+            data: vec![],
+            content_type: meta.content_type.clone(),
+            content_range: String::new(),
+            partial: false,
+        });
+    }
+
     let (start, end, partial) = if let Some(ref range_val) = range.0 {
         if let Some(bytes) = range_val.strip_prefix("bytes=") {
             let parts: Vec<&str> = bytes.splitn(2, '-').collect();
@@ -127,6 +144,14 @@ pub async fn stream_video(
                 file_size - 1
             };
             let end = end.min(file_size - 1);
+            if start > end {
+                return Ok(VideoResponse {
+                    data: vec![],
+                    content_type: meta.content_type.clone(),
+                    content_range: format!("bytes */{}", file_size),
+                    partial: true,
+                });
+            }
             (start, end, true)
         } else {
             (0, file_size - 1, false)
@@ -136,7 +161,11 @@ pub async fn stream_video(
     };
 
     let data = file_bytes[start as usize..=end as usize].to_vec();
-    let content_range = format!("bytes {}-{}/{}", start, end, file_size);
+    let content_range = if partial {
+        format!("bytes {}-{}/{}", start, end, file_size)
+    } else {
+        String::new()
+    };
 
     Ok(VideoResponse {
         data,
@@ -146,11 +175,14 @@ pub async fn stream_video(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_uploaded_file(
     temp_path: std::path::PathBuf,
     base_mime_in: &str,
     title: &str,
     is_nsfw: bool,
+    is_unlisted: bool,
+    is_comments_disabled: bool,
     user: &AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
@@ -228,7 +260,7 @@ async fn process_uploaded_file(
             let digest = Sha256::digest(&bytes);
             let sha256 = digest.encode_hex::<String>();
 
-            let tlsh_hex = tlsh2::TlshDefaultBuilder::build_from(&bytes)
+            let tlsh_hex = TlshDefaultBuilder::build_from(&bytes)
                 .and_then(|t| std::str::from_utf8(&t.hash()).ok().map(|s| s.to_owned()));
 
             Ok((sha256, tlsh_hex))
@@ -243,6 +275,11 @@ async fn process_uploaded_file(
             return Err(e);
         }
     };
+
+    if let Some(existing_id) = state.video_hashes.get(&sha256_hex) {
+        let _ = fs::remove_file(&temp_path).await;
+        return Err(AppError::DuplicateVideo(existing_id.clone()));
+    }
 
     if let Some(ref new_tlsh_hex) = tlsh_hex
         && let Some(original_id) = state.find_similar_tlsh(new_tlsh_hex)
@@ -264,10 +301,13 @@ async fn process_uploaded_file(
             size_bytes,
             sha256: sha256_hex.clone(),
             tlsh_hash: tlsh_hex.clone(),
+            uploaded_by_provider: user.0.provider.clone(),
             uploaded_by_id: user.0.id,
             uploaded_by_name: user.0.username.clone(),
             uploaded_at: chrono::Utc::now(),
             nsfw: is_nsfw,
+            unlisted: is_unlisted,
+            comments_disabled: is_comments_disabled,
             references_id: Some(original_id.clone()),
         };
 
@@ -299,10 +339,13 @@ async fn process_uploaded_file(
         size_bytes,
         sha256: sha256_hex.clone(),
         tlsh_hash: tlsh_hex.clone(),
+        uploaded_by_provider: user.0.provider.clone(),
         uploaded_by_id: user.0.id,
         uploaded_by_name: user.0.username.clone(),
         uploaded_at: chrono::Utc::now(),
         nsfw: is_nsfw,
+        unlisted: is_unlisted,
+        comments_disabled: is_comments_disabled,
         references_id: None,
     };
 
@@ -325,15 +368,26 @@ async fn process_uploaded_file(
     ))
 }
 
-#[post("/videos/upload?<title>&<nsfw>", data = "<data>")]
+#[allow(clippy::too_many_arguments)]
+#[post(
+    "/videos/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>",
+    data = "<data>"
+)]
 pub async fn upload_video(
     title: &str,
     nsfw: Option<bool>,
+    unlisted: Option<bool>,
+    comments_disabled: Option<bool>,
     data: Data<'_>,
     content_type: &ContentType,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
+    let title = title.trim();
+    if title.is_empty() || title.len() > 200 {
+        return Err(AppError::InvalidTitle);
+    }
+
     let mime_str = content_type.to_string();
     let base_mime = mime_str.split(';').next().unwrap_or("").trim();
 
@@ -342,6 +396,8 @@ pub async fn upload_video(
     }
 
     let is_nsfw = nsfw.unwrap_or(false);
+    let is_unlisted = unlisted.unwrap_or(false);
+    let is_comments_disabled = comments_disabled.unwrap_or(true);
 
     let temp_id = Uuid::new_v4().to_string();
     let ext = extension_for_mime(base_mime);
@@ -355,7 +411,17 @@ pub async fn upload_video(
         return Err(AppError::FileTooLarge);
     }
 
-    process_uploaded_file(temp_path, base_mime, title, is_nsfw, &user, state).await
+    process_uploaded_file(
+        temp_path,
+        base_mime,
+        title,
+        is_nsfw,
+        is_unlisted,
+        is_comments_disabled,
+        &user,
+        state,
+    )
+    .await
 }
 
 #[post("/videos/upload/init?<content_type>")]
@@ -389,6 +455,7 @@ pub async fn init_upload(
     state.upload_sessions.insert(
         upload_id.clone(),
         crate::state::UploadSession {
+            user_provider: user.0.provider.clone(),
             user_id: user.0.id,
             content_type: base_mime.to_owned(),
             created_at: chrono::Utc::now(),
@@ -412,7 +479,7 @@ pub async fn upload_chunk(
             .upload_sessions
             .get(upload_id)
             .ok_or(AppError::VideoNotFound)?;
-        if session.user_id != user.0.id {
+        if session.user_id != user.0.id || session.user_provider != user.0.provider {
             return Err(AppError::VideoNotFound);
         }
     }
@@ -435,21 +502,28 @@ pub async fn upload_chunk(
     Ok(Json(serde_json::json!({ "received": written.n.written })))
 }
 
-#[post("/videos/upload/<upload_id>/complete?<title>&<nsfw>")]
+#[post("/videos/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>")]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
     nsfw: Option<bool>,
+    unlisted: Option<bool>,
+    comments_disabled: Option<bool>,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
+    let title = title.trim();
+    if title.is_empty() || title.len() > 200 {
+        return Err(AppError::InvalidTitle);
+    }
+
     let session = state
         .upload_sessions
         .remove(upload_id)
         .ok_or(AppError::VideoNotFound)?
         .1;
 
-    if session.user_id != user.0.id {
+    if session.user_id != user.0.id || session.user_provider != user.0.provider {
         return Err(AppError::VideoNotFound);
     }
 
@@ -484,11 +558,15 @@ pub async fn complete_upload(
     let _ = fs::remove_dir_all(&chunk_dir).await;
 
     let is_nsfw = nsfw.unwrap_or(false);
+    let is_unlisted = unlisted.unwrap_or(false);
+    let is_comments_disabled = comments_disabled.unwrap_or(true);
     process_uploaded_file(
         temp_path,
         &session.content_type,
         title,
         is_nsfw,
+        is_unlisted,
+        is_comments_disabled,
         &user,
         state,
     )
@@ -521,11 +599,16 @@ pub async fn upload_chunk_unauthorized(
     )
 }
 
-#[post("/videos/upload/<_upload_id>/complete?<_title>&<_nsfw>", rank = 2)]
+#[post(
+    "/videos/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    rank = 2
+)]
 pub async fn complete_upload_unauthorized(
     _upload_id: &str,
     _title: Option<&str>,
     _nsfw: Option<bool>,
+    _unlisted: Option<bool>,
+    _comments_disabled: Option<bool>,
 ) -> (Status, Json<serde_json::Value>) {
     (
         Status::Unauthorized,
@@ -533,10 +616,16 @@ pub async fn complete_upload_unauthorized(
     )
 }
 
-#[post("/videos/upload?<_title>&<_nsfw>", data = "<_data>", rank = 2)]
+#[post(
+    "/videos/upload?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    data = "<_data>",
+    rank = 2
+)]
 pub async fn upload_video_unauthorized(
     _title: Option<&str>,
     _nsfw: Option<bool>,
+    _unlisted: Option<bool>,
+    _comments_disabled: Option<bool>,
     _data: Data<'_>,
 ) -> (Status, Json<serde_json::Value>) {
     (
@@ -608,6 +697,8 @@ pub async fn delete_video(
         }
     }
 
+    state.delete_comments(id);
+
     Ok(Json(serde_json::json!({
         "message": format!("Video '{}' deleted", meta.title),
         "deleted_sha256": meta.sha256,
@@ -627,6 +718,161 @@ pub fn delete_video_forbidden(
 
 #[delete("/videos/<_id>", rank = 3)]
 pub fn delete_video_unauthorized(_id: &str) -> (Status, Json<serde_json::Value>) {
+    (
+        Status::Unauthorized,
+        Json(serde_json::json!({ "error": "Authentication required" })),
+    )
+}
+
+#[get("/videos/<id>/comments")]
+pub fn get_comments(id: &str, state: &State<AppState>) -> Result<Json<Vec<Comment>>, AppError> {
+    if !state.videos.contains_key(id) {
+        return Err(AppError::VideoNotFound);
+    }
+    let comments = state
+        .comments
+        .get(id)
+        .map(|c| c.value().clone())
+        .unwrap_or_default();
+    Ok(Json(comments))
+}
+
+#[derive(Deserialize)]
+pub struct CommentBody {
+    pub text: String,
+}
+
+#[post("/videos/<id>/comments", format = "json", data = "<body>")]
+pub fn add_comment(
+    id: &str,
+    body: Json<CommentBody>,
+    user: AuthenticatedUser,
+    state: &State<AppState>,
+) -> Result<(Status, Json<Comment>), AppError> {
+    let trimmed_text = body.text.trim();
+    if trimmed_text.is_empty() || trimmed_text.len() > 2000 {
+        return Err(AppError::InvalidComment);
+    }
+
+    let meta = state.videos.get(id).ok_or(AppError::VideoNotFound)?;
+    if meta.comments_disabled {
+        return Err(AppError::Forbidden);
+    }
+    drop(meta);
+
+    let comment = Comment {
+        id: Uuid::new_v4().to_string(),
+        video_id: id.to_owned(),
+        author_provider: user.0.provider.clone(),
+        author_id: user.0.id,
+        author_name: user.0.username.clone(),
+        text: trimmed_text.to_owned(),
+        created_at: chrono::Utc::now(),
+    };
+
+    state
+        .comments
+        .entry(id.to_owned())
+        .or_default()
+        .push(comment.clone());
+    state.persist_comments(id);
+
+    Ok((Status::Created, Json(comment)))
+}
+
+#[post("/videos/<_id>/comments", format = "json", data = "<_body>", rank = 2)]
+pub fn add_comment_unauthorized(
+    _id: &str,
+    _body: Json<CommentBody>,
+) -> (Status, Json<serde_json::Value>) {
+    (
+        Status::Unauthorized,
+        Json(serde_json::json!({ "error": "Authentication required" })),
+    )
+}
+
+#[delete("/videos/<id>/comments/<comment_id>")]
+pub fn delete_comment(
+    id: &str,
+    comment_id: &str,
+    user: AuthenticatedUser,
+    state: &State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !state.videos.contains_key(id) {
+        return Err(AppError::VideoNotFound);
+    }
+    let is_admin = state.is_admin(&user.0.provider, user.0.id);
+
+    let mut comments = state.comments.get_mut(id).ok_or(AppError::VideoNotFound)?;
+    let idx = comments
+        .iter()
+        .position(|c| c.id == comment_id)
+        .ok_or(AppError::VideoNotFound)?;
+
+    let is_own_comment = comments[idx].author_id == user.0.id
+        && comments[idx].author_provider == user.0.provider;
+    if !is_own_comment && !is_admin {
+        return Err(AppError::Forbidden);
+    }
+
+    comments.remove(idx);
+    drop(comments);
+    state.persist_comments(id);
+
+    Ok(Json(serde_json::json!({ "message": "Comment deleted" })))
+}
+
+#[delete("/videos/<_id>/comments/<_comment_id>", rank = 2)]
+pub fn delete_comment_unauthorized(
+    _id: &str,
+    _comment_id: &str,
+) -> (Status, Json<serde_json::Value>) {
+    (
+        Status::Unauthorized,
+        Json(serde_json::json!({ "error": "Authentication required" })),
+    )
+}
+
+#[derive(Deserialize)]
+pub struct CommentsDisabledPatch {
+    pub comments_disabled: bool,
+}
+
+#[patch("/videos/<id>/comments_disabled", format = "json", data = "<body>")]
+pub fn patch_comments_disabled(
+    id: &str,
+    body: Json<CommentsDisabledPatch>,
+    user: AuthenticatedUser,
+    state: &State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let mut meta = state.videos.get_mut(id).ok_or(AppError::VideoNotFound)?;
+    let is_admin = state.is_admin(&user.0.provider, user.0.id);
+    let is_owner =
+        meta.uploaded_by_id == user.0.id && meta.uploaded_by_provider == user.0.provider;
+    if !is_owner && !is_admin {
+        return Err(AppError::Forbidden);
+    }
+    meta.comments_disabled = body.comments_disabled;
+    let updated = meta.clone();
+    drop(meta);
+    state.persist_video(&updated);
+    Ok(Json(serde_json::json!({
+        "message": "Comments disabled flag updated",
+        "id": id,
+        "comments_disabled": body.comments_disabled,
+    })))
+}
+
+#[patch(
+    "/videos/<_id>/comments_disabled",
+    format = "json",
+    data = "<_body>",
+    rank = 2
+)]
+pub fn patch_comments_disabled_unauthorized(
+    _id: &str,
+    _body: Json<CommentsDisabledPatch>,
+) -> (Status, Json<serde_json::Value>) {
     (
         Status::Unauthorized,
         Json(serde_json::json!({ "error": "Authentication required" })),

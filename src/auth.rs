@@ -34,6 +34,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
     }
 }
 
+#[allow(dead_code)]
 pub struct AdminUser(pub PlatformUser);
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AdminUser {

@@ -1,5 +1,5 @@
 use {
-    crate::models::{Session, VideoMeta},
+    crate::models::{Comment, Session, VideoMeta},
     dashmap::DashMap,
     std::{
         collections::{HashMap, HashSet},
@@ -8,6 +8,7 @@ use {
 };
 
 pub struct UploadSession {
+    pub user_provider: String,
     pub user_id: u64,
     pub content_type: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -67,6 +68,7 @@ pub struct AppState {
     pub admin_ids: HashMap<String, HashSet<u64>>,
     pub upload_dir: String,
     pub upload_sessions: DashMap<String, UploadSession>,
+    pub comments: DashMap<String, Vec<Comment>>,
 }
 
 impl AppState {
@@ -112,6 +114,26 @@ impl AppState {
             }
         }
 
+        let comments: DashMap<String, Vec<Comment>> = DashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&upload_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && let Some(video_id) = name.strip_suffix(".comments.json")
+                {
+                    match std::fs::read_to_string(&path) {
+                        Ok(json) => match serde_json::from_str::<Vec<Comment>>(&json) {
+                            Ok(c) => {
+                                comments.insert(video_id.to_owned(), c);
+                            }
+                            Err(e) => eprintln!("Warning: could not parse {:?}: {}", path, e),
+                        },
+                        Err(e) => eprintln!("Warning: could not read {:?}: {}", path, e),
+                    }
+                }
+            }
+        }
+
         println!("Loaded {} video(s) from disk.", videos.len());
 
         Self {
@@ -125,6 +147,7 @@ impl AppState {
             admin_ids,
             upload_dir,
             upload_sessions: DashMap::new(),
+            comments,
         }
     }
 
@@ -172,6 +195,36 @@ impl AppState {
             && e.kind() != std::io::ErrorKind::NotFound
         {
             eprintln!("Warning: could not delete metadata {:?}: {}", path, e);
+        }
+    }
+
+    pub fn persist_comments(&self, video_id: &str) {
+        let path = Path::new(&self.upload_dir).join(format!("{}.comments.json", video_id));
+        let comments = self
+            .comments
+            .get(video_id)
+            .map(|c| c.value().clone())
+            .unwrap_or_default();
+        match serde_json::to_string_pretty(&comments) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!("Warning: could not write comments to {:?}: {}", path, e);
+                }
+            }
+            Err(e) => eprintln!(
+                "Warning: could not serialize comments for {}: {}",
+                video_id, e
+            ),
+        }
+    }
+
+    pub fn delete_comments(&self, video_id: &str) {
+        self.comments.remove(video_id);
+        let path = Path::new(&self.upload_dir).join(format!("{}.comments.json", video_id));
+        if let Err(e) = std::fs::remove_file(&path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("Warning: could not delete comments {:?}: {}", path, e);
         }
     }
 }

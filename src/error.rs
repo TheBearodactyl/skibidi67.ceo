@@ -11,6 +11,7 @@ use {
 
 #[derive(Debug, Error)]
 pub enum AppError {
+    #[allow(dead_code)]
     #[error("Not authenticated — please log in via /auth/login")]
     NotAuthenticated,
 
@@ -38,6 +39,12 @@ pub enum AppError {
     #[error("File content does not match declared type — magic bytes verification failed")]
     MagicMismatch,
 
+    #[error("Title is required and must be at most 200 characters")]
+    InvalidTitle,
+
+    #[error("Comment must be between 1 and 2000 characters")]
+    InvalidComment,
+
     #[error("Video not found")]
     VideoNotFound,
 
@@ -57,6 +64,8 @@ impl AppError {
             AppError::NotAuthenticated => Status::Unauthorized,
             AppError::Forbidden => Status::Forbidden,
             AppError::OAuthStateMismatch => Status::BadRequest,
+            AppError::InvalidTitle => Status::BadRequest,
+            AppError::InvalidComment => Status::BadRequest,
             AppError::VideoNotFound => Status::NotFound,
             AppError::FileTooLarge => Status::PayloadTooLarge,
             AppError::DuplicateVideo(_) => Status::Conflict,
@@ -76,10 +85,11 @@ struct ErrorBody<'a> {
 impl<'r> Responder<'r, 'static> for AppError {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
         let status = self.status();
-        let body = serde_json::json!({
-            "error": status.reason().unwrap_or("error"),
-            "message": self.to_string(),
-        });
+        let msg = self.to_string();
+        let body = ErrorBody {
+            error: status.reason().unwrap_or("error"),
+            message: &msg,
+        };
         rocket::response::status::Custom(status, Json(body)).respond_to(req)
     }
 }

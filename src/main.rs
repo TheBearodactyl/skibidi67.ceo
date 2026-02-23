@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use {
     crate::state::{AppState, GithubOAuthConfig, OsuOAuthConfig},
     color_eyre::eyre::Context,
@@ -70,7 +69,7 @@ fn rocket() -> _ {
     }
 
     if admin_ids.is_empty() {
-        eprintln!("Warning: No admin IDs configured — no one will be able to upload videos!");
+        eprintln!("Warning: No admin IDs configured — no one will have admin/moderation privileges!");
     } else {
         println!("Admin IDs: {:?}", admin_ids);
     }
@@ -112,6 +111,13 @@ fn rocket() -> _ {
                 routes::videos::delete_video,
                 routes::videos::delete_video_forbidden,
                 routes::videos::delete_video_unauthorized,
+                routes::videos::get_comments,
+                routes::videos::add_comment,
+                routes::videos::add_comment_unauthorized,
+                routes::videos::delete_comment,
+                routes::videos::delete_comment_unauthorized,
+                routes::videos::patch_comments_disabled,
+                routes::videos::patch_comments_disabled_unauthorized,
                 routes::ui::index,
                 routes::ui::listing,
                 routes::ui::player,

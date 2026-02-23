@@ -19,7 +19,7 @@
 {% endblock %}
 
 {% block content %}
-<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}</h2>
+<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
 
 {% if video.references_id %}
 <p><em>This post shares a file with <a href="/ui/videos/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
@@ -58,6 +58,38 @@
   <dd><code>{{ video.tlsh_hash }}</code></dd>{% endif %}
 </dl>
 
+<hr>
+<h3>Comments{% if video.comments_disabled %} (disabled){% endif %}</h3>
+
+{% if user and not video.comments_disabled %}
+<form id="comment-form" style="margin-bottom:1rem">
+  <input id="comment-text" type="text" placeholder="Write a comment…" required maxlength="2000" style="width:60%">
+  <button type="submit">Post</button>
+</form>
+{% endif %}
+
+{% if user %}
+  {% if (video.uploaded_by_id == user.id and video.uploaded_by_provider == user.provider) or is_admin %}
+  <p>
+    <button onclick="toggle_comments('{{ video.id }}', {{ video.comments_disabled }})">
+      {% if video.comments_disabled %}Enable comments{% else %}Disable comments{% endif %}
+    </button>
+  </p>
+  {% endif %}
+{% endif %}
+
+<div id="comments-list">
+{% for c in comments %}
+  <div id="comment-{{ c.id }}" style="margin-bottom:0.75rem; padding:0.5rem; background:var(--mantle); border-radius:4px;">
+    <strong>{{ c.author_name }}</strong> <small style="color:var(--overlay1)">{{ c.created_at }}</small>
+    {% if user %}{% if (c.author_id == user.id and c.author_provider == user.provider) or is_admin %}
+    <button onclick="delete_comment('{{ video.id }}', '{{ c.id }}')" style="float:right; font-size:0.8em;">Delete</button>
+    {% endif %}{% endif %}
+    <p style="margin:0.25rem 0 0">{{ c.text }}</p>
+  </div>
+{% endfor %}
+</div>
+
 <p><a href="/ui">← Back</a></p>
 {% endblock %}
 
@@ -83,6 +115,39 @@ async function toggle_nsfw(id, current) {
   });
   if (res.ok) window.location.reload();
   else alert('Error: ' + (await res.json()).error);
+}
+
+async function toggle_comments(id, current) {
+  const res = await fetch('/videos/' + id + '/comments_disabled', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comments_disabled: !current }),
+  });
+  if (res.ok) window.location.reload();
+  else alert('Error: ' + (await res.json()).error);
+}
+
+async function delete_comment(videoId, commentId) {
+  if (!confirm('Delete this comment?')) return;
+  const res = await fetch('/videos/' + videoId + '/comments/' + commentId, { method: 'DELETE' });
+  if (res.ok) document.getElementById('comment-' + commentId)?.remove();
+  else alert('Error: ' + (await res.json()).error);
+}
+
+var form = document.getElementById('comment-form');
+if (form) {
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var text = document.getElementById('comment-text').value.trim();
+    if (!text) return;
+    const res = await fetch('/videos/{{ video.id }}/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text }),
+    });
+    if (res.ok) window.location.reload();
+    else alert('Error: ' + (await res.json()).error);
+  });
 }
 </script>
 {% endblock %}

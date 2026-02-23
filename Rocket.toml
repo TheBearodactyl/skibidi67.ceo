@@ -9,6 +9,3 @@ data-form = "100 MiB"
 form = "100 MiB"
 bytes = "100 MiB"
 json = "1 MiB"
-
-[default.secret_key]
-secret_key = "lmao no"

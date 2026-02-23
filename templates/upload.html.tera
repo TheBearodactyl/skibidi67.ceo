@@ -11,7 +11,7 @@
   <form id="upload-form">
     <p>
       <label for="title">Title</label><br>
-      <input id="title" type="text" required>
+      <input id="title" type="text" required maxlength="200">
     </p>
     <p>
       <label for="file">Video file (max 100 MB)</label><br>
@@ -21,6 +21,18 @@
       <label>
         <input id="nsfw" type="checkbox">
         Mark as NSFW
+      </label>
+    </p>
+    <p>
+      <label>
+        <input id="unlisted" type="checkbox">
+        Unlisted (hidden from public listing)
+      </label>
+    </p>
+    <p>
+      <label>
+        <input id="comments-disabled" type="checkbox" checked>
+        Disable comments
       </label>
     </p>
     <p>
@@ -43,6 +55,8 @@ document.getElementById('upload-form').addEventListener('submit', async function
   const title  = document.getElementById('title').value.trim();
   const file   = document.getElementById('file').files[0];
   const nsfw   = document.getElementById('nsfw').checked;
+  const unlisted = document.getElementById('unlisted').checked;
+  const comments_disabled = document.getElementById('comments-disabled').checked;
   const prog   = document.getElementById('progress');
   const result = document.getElementById('result');
   const btn    = this.querySelector('button[type="submit"]');
@@ -55,9 +69,9 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, title, nsfw, prog, result);
+      await chunked_upload(file, title, nsfw, unlisted, comments_disabled, prog, result);
     } else {
-      await single_upload(file, title, nsfw, prog, result);
+      await single_upload(file, title, nsfw, unlisted, comments_disabled, prog, result);
     }
   } catch (err) {
     prog.textContent = 'Upload failed: ' + err.message;
@@ -66,10 +80,10 @@ document.getElementById('upload-form').addEventListener('submit', async function
   }
 });
 
-function single_upload(file, title, nsfw, prog, result) {
+function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw);
+    xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled);
     xhr.setRequestHeader('Content-Type', file.type);
 
     xhr.upload.onprogress = (e) => {
@@ -95,7 +109,7 @@ function single_upload(file, title, nsfw, prog, result) {
   });
 }
 
-async function chunked_upload(file, title, nsfw, prog, result) {
+async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
   const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
 
   const init_res = await fetch('/videos/upload/init?content_type=' + encodeURIComponent(file.type), {
@@ -142,7 +156,7 @@ async function chunked_upload(file, title, nsfw, prog, result) {
 
   prog.textContent = 'Processing…';
   const complete_res = await fetch(
-    '/videos/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw,
+    '/videos/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled,
     { method: 'POST' }
   );
   const data = await complete_res.json();
