@@ -7,6 +7,13 @@ use {
     },
 };
 
+pub struct UploadSession {
+    pub user_id: u64,
+    pub content_type: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub chunk_count: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct OsuOAuthConfig {
     pub client_id: u64,
@@ -59,6 +66,7 @@ pub struct AppState {
     pub video_tlsh: DashMap<String, String>,
     pub admin_ids: HashMap<String, HashSet<u64>>,
     pub upload_dir: String,
+    pub upload_sessions: DashMap<String, UploadSession>,
 }
 
 impl AppState {
@@ -116,6 +124,7 @@ impl AppState {
             video_tlsh,
             admin_ids,
             upload_dir,
+            upload_sessions: DashMap::new(),
         }
     }
 

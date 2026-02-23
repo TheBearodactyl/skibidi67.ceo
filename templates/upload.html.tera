@@ -36,6 +36,8 @@
 {% block scripts %}
 {% if user %}
 <script>
+const CHUNK_SIZE = 5 * 1024 * 1024;
+
 document.getElementById('upload-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const title  = document.getElementById('title').value.trim();
@@ -43,36 +45,117 @@ document.getElementById('upload-form').addEventListener('submit', async function
   const nsfw   = document.getElementById('nsfw').checked;
   const prog   = document.getElementById('progress');
   const result = document.getElementById('result');
+  const btn    = this.querySelector('button[type="submit"]');
 
   if (!file) { alert('Please choose a file.'); return; }
 
   prog.hidden = false;
-  prog.textContent = 'Uploading…';
+  prog.textContent = 'Uploading… 0%';
+  btn.disabled = true;
 
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw);
-  xhr.setRequestHeader('Content-Type', file.type);
-
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable)
-      prog.textContent = 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%';
-  };
-
-  xhr.onload = () => {
-    const data = JSON.parse(xhr.responseText);
-    result.hidden = false;
-    result.textContent = JSON.stringify(data, null, 2);
-    if (xhr.status === 201) {
-      prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
-      setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+  try {
+    if (file.size > CHUNK_SIZE) {
+      await chunked_upload(file, title, nsfw, prog, result);
     } else {
-      prog.textContent = 'Upload failed.';
+      await single_upload(file, title, nsfw, prog, result);
     }
-  };
-
-  xhr.onerror = () => { prog.textContent = 'Network error.'; };
-  xhr.send(file);
+  } catch (err) {
+    prog.textContent = 'Upload failed: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
 });
+
+function single_upload(file, title, nsfw, prog, result) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw);
+    xhr.setRequestHeader('Content-Type', file.type);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable)
+        prog.textContent = 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%';
+    };
+
+    xhr.onload = () => {
+      const data = JSON.parse(xhr.responseText);
+      result.hidden = false;
+      result.textContent = JSON.stringify(data, null, 2);
+      if (xhr.status === 201) {
+        prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
+        setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+      } else {
+        prog.textContent = 'Upload failed.';
+      }
+      resolve();
+    };
+
+    xhr.onerror = () => { prog.textContent = 'Network error.'; reject(new Error('Network error')); };
+    xhr.send(file);
+  });
+}
+
+async function chunked_upload(file, title, nsfw, prog, result) {
+  const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
+
+  const init_res = await fetch('/videos/upload/init?content_type=' + encodeURIComponent(file.type), {
+    method: 'POST'
+  });
+  if (!init_res.ok) {
+    const err = await init_res.json();
+    throw new Error(err.message || err.error || 'Init failed');
+  }
+  const { upload_id } = await init_res.json();
+
+  for (let i = 0; i < total_chunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, file.size);
+    const chunk = file.slice(start, end);
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', '/videos/upload/' + upload_id + '/' + i);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const chunk_progress = e.loaded / e.total;
+          const overall = ((i + chunk_progress) / total_chunks) * 100;
+          prog.textContent = 'Uploading… ' + Math.round(overall) + '%';
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          let msg = 'Chunk upload failed';
+          try { msg = JSON.parse(xhr.responseText).message || msg; } catch {}
+          reject(new Error(msg));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error on chunk ' + i));
+      xhr.send(chunk);
+    });
+  }
+
+  prog.textContent = 'Processing…';
+  const complete_res = await fetch(
+    '/videos/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw,
+    { method: 'POST' }
+  );
+  const data = await complete_res.json();
+  result.hidden = false;
+  result.textContent = JSON.stringify(data, null, 2);
+
+  if (complete_res.status === 201) {
+    prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
+    setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+  } else {
+    throw new Error(data.message || data.error || 'Processing failed');
+  }
+}
 </script>
 {% endif %}
 {% endblock %}
