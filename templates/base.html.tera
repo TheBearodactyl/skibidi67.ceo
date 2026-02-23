@@ -6,7 +6,7 @@
   <title>{% block title %}skibidi67.ceo{% endblock %}</title>
   <meta property="og:site_name" content="skibidi67.ceo">
   <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Video sharing for osu! players{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}share videos for free on skibidi67.ceo{% endblock %}">
   {% block og_extra %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
