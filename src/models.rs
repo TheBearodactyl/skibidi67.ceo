@@ -19,9 +19,51 @@ pub struct OsuUser {
     pub is_restricted: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct GithubTokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GithubUser {
+    pub id: u64,
+    pub login: String,
+    pub avatar_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformUser {
+    pub provider: String,
+    pub id: u64,
+    pub username: String,
+    pub avatar_url: String,
+}
+
+impl PlatformUser {
+    pub fn from_osu(u: &OsuUser) -> Self {
+        Self {
+            provider: "osu".to_owned(),
+            id: u.id,
+            username: u.username.clone(),
+            avatar_url: u.avatar_url.clone(),
+        }
+    }
+
+    pub fn from_github(u: &GithubUser) -> Self {
+        Self {
+            provider: "github".to_owned(),
+            id: u.id,
+            username: u.login.clone(),
+            avatar_url: u.avatar_url.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Session {
-    pub user: OsuUser,
+    pub user: PlatformUser,
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -35,6 +77,8 @@ pub struct VideoMeta {
     pub content_type: String,
     pub size_bytes: u64,
     pub sha256: String,
+    #[serde(default)]
+    pub tlsh_hash: Option<String>,
     pub uploaded_by_id: u64,
     pub uploaded_by_name: String,
     pub uploaded_at: DateTime<Utc>,

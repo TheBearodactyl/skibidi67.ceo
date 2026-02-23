@@ -1,9 +1,10 @@
+#![allow(dead_code)]
 use {
-    crate::state::{AppState, OsuOAuthConfig},
+    crate::state::{AppState, GithubOAuthConfig, OsuOAuthConfig},
     color_eyre::eyre::Context,
     rocket::{get, routes, serde::json::Json},
     rocket_dyn_templates::Template,
-    std::collections::HashSet,
+    std::collections::{HashMap, HashSet},
 };
 
 mod auth;
@@ -20,6 +21,20 @@ fn health() -> Json<serde_json::Value> {
     }))
 }
 
+fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
+    std::env::var(env_var)
+        .unwrap_or_default()
+        .split(',')
+        .filter(|s| !s.trim().is_empty())
+        .filter_map(|s| {
+            s.trim().parse::<u64>().ok().or_else(|| {
+                eprintln!("Warning: could not parse admin ID '{}' from {}, skipping", s, env_var);
+                None
+            })
+        })
+        .collect()
+}
+
 #[rocket::launch]
 fn rocket() -> _ {
     color_eyre::install().expect("Failed to install color-eyre");
@@ -28,22 +43,32 @@ fn rocket() -> _ {
         .wrap_err("Failed to load OAuth configuration")
         .expect("OAuth config error");
 
-    let admin_ids: HashSet<u64> = std::env::var("ADMIN_USER_IDS")
-        .unwrap_or_default()
-        .split(',')
-        .filter(|s| !s.trim().is_empty())
-        .filter_map(|s| {
-            s.trim().parse::<u64>().ok().or_else(|| {
-                eprintln!("Warning: could not parse admin ID '{}', skipping", s);
-                None
-            })
-        })
-        .collect();
+    let github_oauth = GithubOAuthConfig::from_env();
+    if github_oauth.is_some() {
+        println!("GitHub OAuth configured.");
+    } else {
+        println!("GitHub OAuth not configured (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI to enable).");
+    }
+
+    let mut admin_ids: HashMap<String, HashSet<u64>> = HashMap::new();
+
+    let osu_admins = parse_admin_ids("ADMIN_OSU_IDS");
+    // Backward compat: also check ADMIN_USER_IDS
+    let legacy_admins = parse_admin_ids("ADMIN_USER_IDS");
+    let combined_osu: HashSet<u64> = osu_admins.union(&legacy_admins).copied().collect();
+    if !combined_osu.is_empty() {
+        admin_ids.insert("osu".to_owned(), combined_osu);
+    }
+
+    let github_admins = parse_admin_ids("ADMIN_GITHUB_IDS");
+    if !github_admins.is_empty() {
+        admin_ids.insert("github".to_owned(), github_admins);
+    }
 
     if admin_ids.is_empty() {
-        eprintln!("Warning: ADMIN_USER_IDS is empty — no one will be able to upload videos!");
+        eprintln!("Warning: No admin IDs configured — no one will be able to upload videos!");
     } else {
-        println!("Admin user IDs: {:?}", admin_ids);
+        println!("Admin IDs: {:?}", admin_ids);
     }
 
     let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".into());
@@ -51,7 +76,7 @@ fn rocket() -> _ {
         .wrap_err_with(|| format!("Could not create upload directory: {}", upload_dir))
         .expect("Failed to create upload dir");
 
-    let app_state = AppState::new(oauth_config, admin_ids, upload_dir);
+    let app_state = AppState::new(oauth_config, github_oauth, admin_ids, upload_dir);
 
     rocket::build()
         .manage(app_state)
@@ -62,6 +87,8 @@ fn rocket() -> _ {
                 health,
                 routes::auth::login,
                 routes::auth::callback,
+                routes::auth::github_login,
+                routes::auth::github_callback,
                 routes::auth::logout,
                 routes::auth::me,
                 routes::auth::me_unauthenticated,

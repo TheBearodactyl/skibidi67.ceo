@@ -32,7 +32,7 @@
       <a href="/ui/videos/{{ v.id }}">{{ v.title }}</a>
       {% if v.nsfw %}[NSFW]{% endif %}
       {% if v.references_id %}[dedup]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_bytes }} bytes
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_human }}
     </li>
     {% endfor %}
   </ul>

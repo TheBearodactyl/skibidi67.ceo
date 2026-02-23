@@ -1,5 +1,5 @@
 use {
-    crate::{models::OsuUser, state::AppState},
+    crate::{models::PlatformUser, state::AppState},
     rocket::{
         http::Status,
         request::{FromRequest, Outcome, Request},
@@ -8,7 +8,7 @@ use {
 
 pub const SESSION_COOKIE: &str = "session_token";
 
-pub struct AuthenticatedUser(pub OsuUser);
+pub struct AuthenticatedUser(pub PlatformUser);
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthenticatedUser {
     type Error = ();
@@ -34,7 +34,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
     }
 }
 
-pub struct AdminUser(pub OsuUser);
+pub struct AdminUser(pub PlatformUser);
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AdminUser {
     type Error = ();
@@ -47,7 +47,7 @@ impl<'r> FromRequest<'r> for AdminUser {
         };
 
         let state = req.rocket().state::<AppState>().unwrap();
-        if state.is_admin(user.id) {
+        if state.is_admin(&user.provider, user.id) {
             Outcome::Success(AdminUser(user))
         } else {
             Outcome::Error((Status::Forbidden, ()))

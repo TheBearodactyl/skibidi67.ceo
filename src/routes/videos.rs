@@ -5,7 +5,6 @@ use {
         models::VideoMeta,
         state::AppState,
     },
-    dashmap::mapref::entry::Entry,
     hex::ToHex,
     rocket::{
         Data, State,
@@ -13,7 +12,6 @@ use {
         delete, get,
         http::{ContentType, Status},
         patch, post,
-        response::stream::ReaderStream,
         serde::json::Json,
         tokio::{fs, task},
     },
@@ -31,6 +29,49 @@ const ALLOWED_CONTENT_TYPES: &[&str] = &[
     "video/x-matroska",
     "video/x-msvideo",
 ];
+
+pub struct RangeHeader(pub Option<String>);
+
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for RangeHeader {
+    type Error = ();
+
+    async fn from_request(
+        req: &'r rocket::request::Request<'_>,
+    ) -> rocket::request::Outcome<Self, Self::Error> {
+        let val = req.headers().get_one("Range").map(|s| s.to_owned());
+        rocket::request::Outcome::Success(RangeHeader(val))
+    }
+}
+
+pub struct VideoResponse {
+    pub data: Vec<u8>,
+    pub content_type: String,
+    pub content_range: String,
+    pub partial: bool,
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for VideoResponse {
+    fn respond_to(
+        self,
+        _req: &'r rocket::request::Request<'_>,
+    ) -> rocket::response::Result<'static> {
+        let status = if self.partial {
+            rocket::http::Status::PartialContent
+        } else {
+            rocket::http::Status::Ok
+        };
+
+        rocket::response::Response::build()
+            .status(status)
+            .raw_header("Content-Type", self.content_type)
+            .raw_header("Content-Length", self.data.len().to_string())
+            .raw_header("Accept-Ranges", "bytes")
+            .raw_header("Content-Range", self.content_range)
+            .sized_body(self.data.len(), std::io::Cursor::new(self.data))
+            .ok()
+    }
+}
 
 #[get("/videos")]
 pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
@@ -57,7 +98,8 @@ pub fn get_video(id: &str, state: &State<AppState>) -> Result<Json<VideoMeta>, A
 pub async fn stream_video(
     id: &str,
     state: &State<AppState>,
-) -> Result<(ContentType, ReaderStream![fs::File]), AppError> {
+    range: RangeHeader,
+) -> Result<VideoResponse, AppError> {
     let meta = state.videos.get(id).ok_or(AppError::VideoNotFound)?.clone();
 
     let filename = if let Some(ref ref_id) = meta.references_id {
@@ -71,12 +113,36 @@ pub async fn stream_video(
     };
 
     let file_path = Path::new(&state.upload_dir).join(&filename);
-    let file = fs::File::open(&file_path).await?;
+    let file_bytes = fs::read(&file_path).await?;
+    let file_size = file_bytes.len() as u64;
 
-    let content_type =
-        ContentType::parse_flexible(&meta.content_type).unwrap_or(ContentType::Binary);
+    let (start, end, partial) = if let Some(ref range_val) = range.0 {
+        if let Some(bytes) = range_val.strip_prefix("bytes=") {
+            let parts: Vec<&str> = bytes.splitn(2, '-').collect();
+            let start: u64 = parts[0].parse().unwrap_or(0);
+            let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
+                parts[1].parse().unwrap_or(file_size - 1)
+            } else {
+                file_size - 1
+            };
+            let end = end.min(file_size - 1);
+            (start, end, true)
+        } else {
+            (0, file_size - 1, false)
+        }
+    } else {
+        (0, file_size - 1, false)
+    };
 
-    Ok((content_type, ReaderStream::one(file)))
+    let data = file_bytes[start as usize..=end as usize].to_vec();
+    let content_range = format!("bytes {}-{}/{}", start, end, file_size);
+
+    Ok(VideoResponse {
+        data,
+        content_type: meta.content_type.clone(),
+        content_range,
+        partial,
+    })
 }
 
 #[post("/videos/upload?<title>&<nsfw>", data = "<data>")]
@@ -102,7 +168,7 @@ pub async fn upload_video(
     let temp_filename = format!("tmp_{}{}", temp_id, ext);
     let temp_path = Path::new(&state.upload_dir).join(&temp_filename);
 
-    let written = data.open(15.mebibytes()).into_file(&temp_path).await?;
+    let written = data.open(100.mebibytes()).into_file(&temp_path).await?;
 
     if !written.is_complete() {
         let _ = fs::remove_file(&temp_path).await;
@@ -111,19 +177,24 @@ pub async fn upload_video(
 
     let size_bytes = written.n.written as u64;
     let hash_path = temp_path.clone();
-    let sha256_hex: String = task::spawn_blocking(move || -> Result<String, AppError> {
+    let (sha256_hex, tlsh_hex) = task::spawn_blocking(move || -> Result<(String, Option<String>), AppError> {
         let bytes = std::fs::read(&hash_path)?;
         let digest = Sha256::digest(&bytes);
-        Ok(digest.encode_hex::<String>())
+        let sha256 = digest.encode_hex::<String>();
+
+        let tlsh_hex = tlsh2::TlshDefaultBuilder::build_from(&bytes)
+            .and_then(|t| std::str::from_utf8(&t.hash()).ok().map(|s| s.to_owned()));
+
+        Ok((sha256, tlsh_hex))
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    match state.video_hashes.entry(sha256_hex.clone()) {
-        Entry::Occupied(existing) => {
+    // Check for TLSH similarity-based deduplication
+    if let Some(ref new_tlsh_hex) = tlsh_hex {
+        if let Some(original_id) = state.find_similar_tlsh(new_tlsh_hex) {
             let _ = fs::remove_file(&temp_path).await;
 
-            let original_id = existing.get().clone();
             let original_filename = state
                 .videos
                 .get(&original_id)
@@ -138,6 +209,7 @@ pub async fn upload_video(
                 content_type: base_mime.to_owned(),
                 size_bytes,
                 sha256: sha256_hex.clone(),
+                tlsh_hash: tlsh_hex.clone(),
                 uploaded_by_id: user.0.id,
                 uploaded_by_name: user.0.username.clone(),
                 uploaded_at: chrono::Utc::now(),
@@ -148,52 +220,55 @@ pub async fn upload_video(
             state.videos.insert(video_id.clone(), meta.clone());
             state.persist_video(&meta);
 
-            Ok((
+            return Ok((
                 Status::Created,
                 Json(serde_json::json!({
-                    "message": "Video uploaded successfully (content deduplicated — file shared with an earlier post)",
+                    "message": "Video uploaded successfully (content deduplicated — similar file found)",
                     "deduplicated": true,
                     "original_id": original_id,
                     "video": meta,
                 })),
-            ))
-        }
-
-        Entry::Vacant(slot) => {
-            let video_id = Uuid::new_v4().to_string();
-            let final_filename = format!("{}{}", video_id, ext);
-            let final_path = Path::new(&state.upload_dir).join(&final_filename);
-
-            fs::rename(&temp_path, &final_path).await?;
-
-            let meta = VideoMeta {
-                id: video_id.clone(),
-                title: title.to_owned(),
-                filename: final_filename,
-                content_type: base_mime.to_owned(),
-                size_bytes,
-                sha256: sha256_hex.clone(),
-                uploaded_by_id: user.0.id,
-                uploaded_by_name: user.0.username.clone(),
-                uploaded_at: chrono::Utc::now(),
-                nsfw: is_nsfw,
-                references_id: None,
-            };
-
-            slot.insert(video_id.clone());
-            state.videos.insert(video_id.clone(), meta.clone());
-            state.persist_video(&meta);
-
-            Ok((
-                Status::Created,
-                Json(serde_json::json!({
-                    "message": "Video uploaded successfully",
-                    "deduplicated": false,
-                    "video": meta,
-                })),
-            ))
+            ));
         }
     }
+
+    // No similar file found — store as new
+    let video_id = Uuid::new_v4().to_string();
+    let final_filename = format!("{}{}", video_id, ext);
+    let final_path = Path::new(&state.upload_dir).join(&final_filename);
+
+    fs::rename(&temp_path, &final_path).await?;
+
+    let meta = VideoMeta {
+        id: video_id.clone(),
+        title: title.to_owned(),
+        filename: final_filename,
+        content_type: base_mime.to_owned(),
+        size_bytes,
+        sha256: sha256_hex.clone(),
+        tlsh_hash: tlsh_hex.clone(),
+        uploaded_by_id: user.0.id,
+        uploaded_by_name: user.0.username.clone(),
+        uploaded_at: chrono::Utc::now(),
+        nsfw: is_nsfw,
+        references_id: None,
+    };
+
+    state.video_hashes.insert(sha256_hex.clone(), video_id.clone());
+    if let Some(ref tlsh_val) = tlsh_hex {
+        state.video_tlsh.insert(video_id.clone(), tlsh_val.clone());
+    }
+    state.videos.insert(video_id.clone(), meta.clone());
+    state.persist_video(&meta);
+
+    Ok((
+        Status::Created,
+        Json(serde_json::json!({
+            "message": "Video uploaded successfully",
+            "deduplicated": false,
+            "video": meta,
+        })),
+    ))
 }
 
 #[post("/videos/upload?<_title>&<_nsfw>", data = "<_data>", rank = 2)]
@@ -265,6 +340,7 @@ pub async fn delete_video(
 
         if !has_references {
             state.video_hashes.remove(&meta.sha256);
+            state.video_tlsh.remove(id);
             let file_path = Path::new(&state.upload_dir).join(&meta.filename);
             let _ = fs::remove_file(&file_path).await;
         }

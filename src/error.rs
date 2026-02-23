@@ -26,7 +26,7 @@ pub enum AppError {
     #[error("Failed to fetch osu! user info: {0}")]
     OsuUserFetch(String),
 
-    #[error("Upload exceeds 5 MB limit")]
+    #[error("Upload exceeds 100 MB limit")]
     FileTooLarge,
 
     #[error("Duplicate video — identical content already exists as video '{0}'")]

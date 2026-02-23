@@ -51,9 +51,11 @@
   <dt>Date</dt>
   <dd>{{ video.uploaded_at }}</dd>
   <dt>Size</dt>
-  <dd>{{ video.size_bytes }} bytes</dd>
+  <dd>{{ video.size_human }}</dd>
   <dt>SHA-256</dt>
   <dd><code>{{ video.sha256 }}</code></dd>
+  {% if video.tlsh_hash %}<dt>TLSH</dt>
+  <dd><code>{{ video.tlsh_hash }}</code></dd>{% endif %}
 </dl>
 
 <p><a href="/ui">← Back</a></p>

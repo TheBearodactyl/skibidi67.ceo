@@ -8,6 +8,182 @@
   <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
   <meta property="og:description" content="{% block og_description %}Video sharing for osu! players{% endblock %}">
   {% block og_extra %}{% endblock %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --base:    #1e1e2e;
+      --mantle:  #181825;
+      --crust:   #11111b;
+      --surface0: #313244;
+      --surface1: #45475a;
+      --surface2: #585b70;
+      --overlay0: #6c7086;
+      --overlay1: #7f849c;
+      --overlay2: #9399b2;
+      --subtext0: #a6adc8;
+      --subtext1: #bac2de;
+      --text:    #cdd6f4;
+      --lavender:#b4befe;
+      --blue:    #89b4fa;
+      --sapphire:#74c7ec;
+      --sky:     #89dceb;
+      --teal:    #94e2d5;
+      --green:   #a6e3a1;
+      --yellow:  #f9e2af;
+      --peach:   #fab387;
+      --maroon:  #eba0ac;
+      --red:     #f38ba8;
+      --mauve:   #cba6f7;
+      --pink:    #f5c2e7;
+      --flamingo:#f2cdcd;
+      --rosewater:#f5e0dc;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: 'Open Sans', sans-serif;
+      background-color: var(--base);
+      color: var(--text);
+      margin: 0;
+      padding: 1rem 2rem;
+    }
+
+    a {
+      color: var(--blue);
+    }
+
+    a:visited {
+      color: var(--lavender);
+    }
+
+    a:hover {
+      color: var(--sapphire);
+    }
+
+    header h1 a {
+      color: var(--mauve);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    header h1 a:visited {
+      color: var(--mauve);
+    }
+
+    header h1 a:hover {
+      color: var(--pink);
+    }
+
+    nav {
+      color: var(--subtext1);
+    }
+
+    nav strong {
+      color: var(--peach);
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--surface1);
+      margin: 0.75rem 0;
+    }
+
+    h2 {
+      color: var(--lavender);
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th {
+      background-color: var(--mantle);
+      color: var(--subtext1);
+      text-align: left;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--surface1);
+    }
+
+    td {
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--surface0);
+      color: var(--text);
+    }
+
+    tr:hover td {
+      background-color: var(--surface0);
+    }
+
+    button {
+      background-color: var(--surface1);
+      color: var(--text);
+      border: 1px solid var(--surface2);
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    button:hover {
+      background-color: var(--surface2);
+      color: var(--text);
+    }
+
+    input[type="text"],
+    input[type="file"] {
+      background-color: var(--mantle);
+      color: var(--text);
+      border: 1px solid var(--surface1);
+      padding: 0.3rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    input[type="text"]:focus,
+    input[type="file"]:focus {
+      outline: 2px solid var(--blue);
+    }
+
+    label {
+      color: var(--subtext1);
+    }
+
+    code, pre {
+      background-color: var(--mantle);
+      color: var(--green);
+      border-radius: 4px;
+      padding: 0.1rem 0.3rem;
+      font-size: 0.9em;
+    }
+
+    pre {
+      padding: 0.75rem;
+      overflow-x: auto;
+    }
+
+    dt {
+      color: var(--subtext0);
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+
+    dd {
+      color: var(--text);
+      margin-left: 1rem;
+    }
+
+    em {
+      color: var(--subtext1);
+    }
+
+    strong {
+      color: var(--peach);
+    }
+  </style>
 </head>
 <body>
 
@@ -21,6 +197,7 @@
       | <a href="/auth/logout">Sign out</a>
     {% else %}
       <a href="/auth/login">Sign in with osu!</a>
+      {% if has_github_oauth %} | <a href="/auth/github/login">Sign in with GitHub</a>{% endif %}
     {% endif %}
   </nav>
   <hr>

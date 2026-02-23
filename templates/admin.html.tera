@@ -7,7 +7,7 @@
   <p>Admin access required. <a href="/ui">← Back</a></p>
 {% else %}
   <h2>Admin — Moderation</h2>
-  <p>{{ video_count }} posts, {{ disk_kib }} KiB on disk (deduplicated)</p>
+  <p>{{ video_count }} posts, {{ disk_human }} on disk (deduplicated)</p>
 
   {% if videos | length == 0 %}
     <p>No videos yet.</p>
@@ -29,7 +29,7 @@
           <td><a href="/ui/videos/{{ v.id }}">{{ v.title }}</a></td>
           <td>{{ v.uploaded_by_name }}</td>
           <td>{{ v.uploaded_at }}</td>
-          <td>{{ v.size_bytes }} B</td>
+          <td>{{ v.size_human }}</td>
           <td>
             {% if v.nsfw %}NSFW{% endif %}
             {% if v.references_id %}dedup{% endif %}

@@ -1,24 +1,42 @@
 use {
-    crate::{auth::AuthenticatedUser, models::OsuUser, state::AppState},
+    crate::{auth::AuthenticatedUser, models::PlatformUser, state::AppState},
     rand::seq::IndexedRandom,
     rocket::{State, get, response::Redirect},
     rocket_dyn_templates::{Template, context},
     serde::Serialize,
 };
 
+fn format_size(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    for unit in UNITS {
+        if size < 1024.0 {
+            return if size.fract() < 0.05 {
+                format!("{:.0} {}", size, unit)
+            } else {
+                format!("{:.1} {}", size, unit)
+            };
+        }
+        size /= 1024.0;
+    }
+    format!("{:.1} PB", size)
+}
+
 #[derive(Serialize)]
 struct UserCtx {
     id: u64,
     username: String,
     avatar_url: String,
+    provider: String,
 }
 
 impl UserCtx {
-    fn from_osu(u: &OsuUser) -> Self {
+    fn from_platform(u: &PlatformUser) -> Self {
         Self {
             id: u.id,
             username: u.username.clone(),
             avatar_url: u.avatar_url.clone(),
+            provider: u.provider.clone(),
         }
     }
 }
@@ -29,7 +47,9 @@ struct VideoCtx {
     title: String,
     content_type: String,
     size_bytes: u64,
+    size_human: String,
     sha256: String,
+    tlsh_hash: Option<String>,
     uploaded_by_name: String,
     uploaded_at: String,
     nsfw: bool,
@@ -43,7 +63,9 @@ impl VideoCtx {
             title: v.title.clone(),
             content_type: v.content_type.clone(),
             size_bytes: v.size_bytes,
+            size_human: format_size(v.size_bytes),
             sha256: v.sha256.clone(),
+            tlsh_hash: v.tlsh_hash.clone(),
             uploaded_by_name: v.uploaded_by_name.clone(),
             uploaded_at: v.uploaded_at.format("%Y-%m-%d %H:%M UTC").to_string(),
             nsfw: v.nsfw,
@@ -59,8 +81,9 @@ pub fn index() -> Redirect {
 
 #[get("/ui")]
 pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
-    let osu_user = user.as_ref().map(|u| &u.0);
-    let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
 
     let mut videos: Vec<VideoCtx> = state
         .videos
@@ -81,7 +104,9 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
             title: v.title.clone(),
             content_type: v.content_type.clone(),
             size_bytes: v.size_bytes,
+            size_human: v.size_human.clone(),
             sha256: v.sha256.clone(),
+            tlsh_hash: v.tlsh_hash.clone(),
             uploaded_by_name: v.uploaded_by_name.clone(),
             uploaded_at: v.uploaded_at.clone(),
             nsfw: v.nsfw,
@@ -92,8 +117,9 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
     Template::render(
         "listing",
         context! {
-            user: osu_user.map(UserCtx::from_osu),
+            user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            has_github_oauth,
             videos,
             featured,
         },
@@ -102,8 +128,9 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
 
 #[get("/ui/videos/<id>")]
 pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
-    let osu_user = user.as_ref().map(|u| &u.0);
-    let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
     let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
     let embed_url = format!("https://skibidi67.ceo/e/{}", id);
@@ -111,8 +138,9 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
     Template::render(
         "player",
         context! {
-            user: osu_user.map(UserCtx::from_osu),
+            user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            has_github_oauth,
             video,
             video_url,
             embed_url,
@@ -136,22 +164,25 @@ pub fn embed(id: &str, state: &State<AppState>) -> Template {
 
 #[get("/ui/upload")]
 pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
-    let osu_user = user.as_ref().map(|u| &u.0);
-    let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
 
     Template::render(
         "upload",
         context! {
-            user: osu_user.map(UserCtx::from_osu),
+            user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            has_github_oauth,
         },
     )
 }
 
 #[get("/ui/admin")]
 pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
-    let osu_user = user.as_ref().map(|u| &u.0);
-    let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
 
     let mut videos: Vec<VideoCtx> = state
         .videos
@@ -160,21 +191,25 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> 
         .collect();
     videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
 
-    let disk_kib: u64 = state
-        .videos
-        .iter()
-        .filter(|e| e.value().references_id.is_none())
-        .map(|e| e.value().size_bytes / 1024)
-        .sum();
+    let disk_human: String = {
+        let total_bytes: u64 = state
+            .videos
+            .iter()
+            .filter(|e| e.value().references_id.is_none())
+            .map(|e| e.value().size_bytes)
+            .sum();
+        format_size(total_bytes)
+    };
 
     Template::render(
         "admin",
         context! {
-            user: osu_user.map(UserCtx::from_osu),
+            user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            has_github_oauth,
             videos,
             video_count: state.videos.len(),
-            disk_kib,
+            disk_human,
         },
     )
 }
@@ -185,8 +220,9 @@ pub async fn ui_delete(
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    let osu_user = user.as_ref().map(|u| &u.0);
-    let is_admin = osu_user.is_some_and(|u| state.is_admin(u.id));
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
 
     let (title, message) = if !is_admin {
         ("Error".to_owned(), "Admin access required.".to_owned())
@@ -202,6 +238,7 @@ pub async fn ui_delete(
                         .any(|e| e.value().references_id.as_deref() == Some(&meta.id));
                     if !still_referenced {
                         state.video_hashes.remove(&meta.sha256);
+                        state.video_tlsh.remove(&meta.id);
                         let path = std::path::Path::new(&state.upload_dir).join(&meta.filename);
                         let _ = rocket::tokio::fs::remove_file(path).await;
                     }
@@ -217,8 +254,9 @@ pub async fn ui_delete(
     Template::render(
         "message",
         context! {
-            user: osu_user.map(UserCtx::from_osu),
+            user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            has_github_oauth,
             title,
             message,
         },

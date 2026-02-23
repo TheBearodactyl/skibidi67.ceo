@@ -1,13 +1,13 @@
 [default]
-address = "0.0.0.0"
+address = "127.0.0.1"
 port = 8090
 log_level = "normal"
 
 [default.limits]
-file = "15 MiB"
-data-form = "15 MiB"
-form = "15 MiB"
-bytes = "15 MiB"
+file = "100 MiB"
+data-form = "100 MiB"
+form = "100 MiB"
+bytes = "100 MiB"
 json = "1 MiB"
 
 [default.secret_key]

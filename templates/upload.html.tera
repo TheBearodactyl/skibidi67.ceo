@@ -14,7 +14,7 @@
       <input id="title" type="text" required>
     </p>
     <p>
-      <label for="file">Video file (max 15 MiB)</label><br>
+      <label for="file">Video file (max 100 MB)</label><br>
       <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-msvideo" required>
     </p>
     <p>

@@ -20,6 +20,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/skibidi67 .
 COPY Rocket.toml .
+COPY templates ./templates
 
 RUN mkdir -p uploads
 
