@@ -35,6 +35,9 @@ pub enum AppError {
     #[error("Invalid file type — only video files are accepted")]
     InvalidFileType,
 
+    #[error("File content does not match declared type — magic bytes verification failed")]
+    MagicMismatch,
+
     #[error("Video not found")]
     VideoNotFound,
 
@@ -58,6 +61,7 @@ impl AppError {
             AppError::FileTooLarge => Status::PayloadTooLarge,
             AppError::DuplicateVideo(_) => Status::Conflict,
             AppError::InvalidFileType => Status::UnsupportedMediaType,
+            AppError::MagicMismatch => Status::UnsupportedMediaType,
             _ => Status::InternalServerError,
         }
     }

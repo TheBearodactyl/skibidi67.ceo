@@ -28,7 +28,10 @@ fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
         .filter(|s| !s.trim().is_empty())
         .filter_map(|s| {
             s.trim().parse::<u64>().ok().or_else(|| {
-                eprintln!("Warning: could not parse admin ID '{}' from {}, skipping", s, env_var);
+                eprintln!(
+                    "Warning: could not parse admin ID '{}' from {}, skipping",
+                    s, env_var
+                );
                 None
             })
         })
@@ -47,13 +50,14 @@ fn rocket() -> _ {
     if github_oauth.is_some() {
         println!("GitHub OAuth configured.");
     } else {
-        println!("GitHub OAuth not configured (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI to enable).");
+        println!(
+            "GitHub OAuth not configured (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI to enable)."
+        );
     }
 
     let mut admin_ids: HashMap<String, HashSet<u64>> = HashMap::new();
 
     let osu_admins = parse_admin_ids("ADMIN_OSU_IDS");
-    // Backward compat: also check ADMIN_USER_IDS
     let legacy_admins = parse_admin_ids("ADMIN_USER_IDS");
     let combined_osu: HashSet<u64> = osu_admins.union(&legacy_admins).copied().collect();
     if !combined_osu.is_empty() {

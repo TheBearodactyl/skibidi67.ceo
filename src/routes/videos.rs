@@ -177,20 +177,34 @@ pub async fn upload_video(
 
     let size_bytes = written.n.written as u64;
     let hash_path = temp_path.clone();
-    let (sha256_hex, tlsh_hex) = task::spawn_blocking(move || -> Result<(String, Option<String>), AppError> {
-        let bytes = std::fs::read(&hash_path)?;
-        let digest = Sha256::digest(&bytes);
-        let sha256 = digest.encode_hex::<String>();
+    let magic_mime = base_mime.to_owned();
+    let hash_result =
+        task::spawn_blocking(move || -> Result<(String, Option<String>), AppError> {
+            let bytes = std::fs::read(&hash_path)?;
 
-        let tlsh_hex = tlsh2::TlshDefaultBuilder::build_from(&bytes)
-            .and_then(|t| std::str::from_utf8(&t.hash()).ok().map(|s| s.to_owned()));
+            if !verify_magic_bytes(&bytes, &magic_mime) {
+                return Err(AppError::MagicMismatch);
+            }
 
-        Ok((sha256, tlsh_hex))
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))??;
+            let digest = Sha256::digest(&bytes);
+            let sha256 = digest.encode_hex::<String>();
 
-    // Check for TLSH similarity-based deduplication
+            let tlsh_hex = tlsh2::TlshDefaultBuilder::build_from(&bytes)
+                .and_then(|t| std::str::from_utf8(&t.hash()).ok().map(|s| s.to_owned()));
+
+            Ok((sha256, tlsh_hex))
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let (sha256_hex, tlsh_hex) = match hash_result {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = fs::remove_file(&temp_path).await;
+            return Err(e);
+        }
+    };
+
     if let Some(ref new_tlsh_hex) = tlsh_hex {
         if let Some(original_id) = state.find_similar_tlsh(new_tlsh_hex) {
             let _ = fs::remove_file(&temp_path).await;
@@ -232,7 +246,6 @@ pub async fn upload_video(
         }
     }
 
-    // No similar file found — store as new
     let video_id = Uuid::new_v4().to_string();
     let final_filename = format!("{}{}", video_id, ext);
     let final_path = Path::new(&state.upload_dir).join(&final_filename);
@@ -254,7 +267,9 @@ pub async fn upload_video(
         references_id: None,
     };
 
-    state.video_hashes.insert(sha256_hex.clone(), video_id.clone());
+    state
+        .video_hashes
+        .insert(sha256_hex.clone(), video_id.clone());
     if let Some(ref tlsh_val) = tlsh_hex {
         state.video_tlsh.insert(video_id.clone(), tlsh_val.clone());
     }
@@ -369,6 +384,21 @@ pub fn delete_video_unauthorized(_id: &str) -> (Status, Json<serde_json::Value>)
         Status::Unauthorized,
         Json(serde_json::json!({ "error": "Authentication required" })),
     )
+}
+
+fn verify_magic_bytes(bytes: &[u8], mime: &str) -> bool {
+    if bytes.len() < 12 {
+        return false;
+    }
+
+    match mime {
+        "video/mp4" | "video/quicktime" => bytes[4..8] == *b"ftyp",
+        "video/webm" | "video/x-matroska" => bytes[..4] == [0x1A, 0x45, 0xDF, 0xA3],
+        "video/ogg" => bytes[..4] == *b"OggS",
+        "video/x-msvideo" => bytes[..4] == *b"RIFF" && bytes[8..12] == *b"AVI ",
+
+        _ => false,
+    }
 }
 
 fn extension_for_mime(mime: &str) -> &'static str {

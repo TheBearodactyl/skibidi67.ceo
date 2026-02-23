@@ -56,7 +56,6 @@ pub struct AppState {
     pub sessions: DashMap<String, Session>,
     pub videos: DashMap<String, VideoMeta>,
     pub video_hashes: DashMap<String, String>,
-    /// video_id -> TLSH hex string (for similarity comparison)
     pub video_tlsh: DashMap<String, String>,
     pub admin_ids: HashMap<String, HashSet<u64>>,
     pub upload_dir: String,
