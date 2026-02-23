@@ -14,7 +14,7 @@ RUN touch src/main.rs && cargo build --release
 
 FROM alpine
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates ffmpeg
 
 WORKDIR /app
 

@@ -176,15 +176,68 @@ pub async fn upload_video(
     }
 
     let size_bytes = written.n.written as u64;
-    let hash_path = temp_path.clone();
+    let verify_path = temp_path.clone();
     let magic_mime = base_mime.to_owned();
+    let verify_result = task::spawn_blocking(move || -> Result<(), AppError> {
+        let bytes = std::fs::read(&verify_path)?;
+        if !verify_magic_bytes(&bytes, &magic_mime) {
+            return Err(AppError::MagicMismatch);
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    if let Err(e) = verify_result {
+        let _ = fs::remove_file(&temp_path).await;
+        return Err(e);
+    }
+
+    let mut base_mime = base_mime.to_owned();
+    let mut ext = ext;
+    let mut size_bytes = size_bytes;
+
+    if base_mime != "video/mp4" {
+        let converted_path = Path::new(&state.upload_dir).join(format!("tmp_{}.mp4", temp_id));
+
+        let status = tokio::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-i",
+                temp_path.to_str().unwrap(),
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                converted_path.to_str().unwrap(),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map_err(|e| AppError::Internal(format!("ffmpeg launch failed: {e}")))?;
+
+        if !status.success() {
+            let _ = fs::remove_file(&temp_path).await;
+            let _ = fs::remove_file(&converted_path).await;
+            return Err(AppError::Internal("ffmpeg conversion failed".to_string()));
+        }
+
+        let _ = fs::remove_file(&temp_path).await;
+        fs::rename(&converted_path, &temp_path).await?;
+
+        base_mime = "video/mp4".to_owned();
+        ext = ".mp4";
+        let meta = fs::metadata(&temp_path).await?;
+        size_bytes = meta.len();
+    }
+
+    let hash_path = temp_path.clone();
     let hash_result =
         task::spawn_blocking(move || -> Result<(String, Option<String>), AppError> {
             let bytes = std::fs::read(&hash_path)?;
-
-            if !verify_magic_bytes(&bytes, &magic_mime) {
-                return Err(AppError::MagicMismatch);
-            }
 
             let digest = Sha256::digest(&bytes);
             let sha256 = digest.encode_hex::<String>();
