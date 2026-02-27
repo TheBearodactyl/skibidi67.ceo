@@ -159,7 +159,7 @@
 <header>
   <h1><a href="/ui">skibidi67.ceo</a></h1>
   <nav aria-label="Site navigation">
-    <a href="/ui/videos">Videos</a> | <a href="/ui/audio">Audio</a> | <a href="/ui/images">Images</a>
+    <a href="/ui/videos">Videos</a> | <a href="/ui/audio">Audio</a> | <a href="/ui/images">Images</a> | <a href="/ui/text">Text</a>
     {% if user %}
       | Signed in as <strong>{{ user.username }}</strong>
       | <a href="/ui/upload">Upload</a>
