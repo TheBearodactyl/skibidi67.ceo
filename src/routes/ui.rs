@@ -115,7 +115,10 @@ fn media_url_prefix(media_type: &str) -> &'static str {
 
 #[get("/favicon.ico")]
 pub fn favicon() -> (ContentType, &'static [u8]) {
-    (ContentType::Icon, include_bytes!("../../favicon.ico"))
+    (
+        ContentType::Icon,
+        include_bytes!("../../static/favicon.ico"),
+    )
 }
 
 #[get("/")]

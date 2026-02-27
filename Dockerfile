@@ -9,6 +9,7 @@ RUN mkdir src && echo 'fn main(){}' > src/main.rs
 RUN cargo build --release
 RUN rm src/main.rs
 
+COPY static ./static
 COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
@@ -21,6 +22,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/skibidi67 .
 COPY Rocket.toml .
 COPY templates ./templates
+COPY static ./static
 
 RUN mkdir -p uploads
 
