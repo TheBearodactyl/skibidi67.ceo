@@ -8,7 +8,7 @@
 
 {% if featured %}
 <div style="margin-bottom:2rem">
-  <p><strong>Random pick:</strong> <a href="/{{ featured.media_type | replace(from="image", to="images") | replace(from="video", to="videos") | replace(from="audio", to="audio") }}/../ui/{{ featured.media_type == "image" | then(val="images") }}{{ featured.media_type == "video" | then(val="videos") }}{{ featured.media_type == "audio" | then(val="audio") }}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
+  <p><strong>Random pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
   {% if featured.media_type == "audio" %}
     {% if featured.nsfw %}
     <p><strong>[NSFW]</strong> <a href="#" onclick="reveal_featured(); return false;">Click to reveal</a></p>
@@ -100,3 +100,5 @@ function reveal_featured() {
 }
 </script>
 {% endblock %}
+
+
