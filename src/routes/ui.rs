@@ -159,7 +159,7 @@ pub fn index() -> Redirect {
 #[get("/ui")]
 pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
     let show_nsfw_on_homepage: bool = std::env::var("SHOW_NSFW_ON_HOMEPAGE")
-        .expect("Failed to get env variable")
+        .unwrap_or_default()
         .parse()
         .unwrap_or(false);
     let platform_user = user.as_ref().map(|u| &u.0);
