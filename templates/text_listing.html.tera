@@ -1,7 +1,7 @@
 {% extends "base" %}
 
-{% block title %}Text — skibidi67.ceo{% endblock %}
-{% block og_title %}Text — skibidi67.ceo{% endblock %}
+{% block title %}Text — {{ site_host }}{% endblock %}
+{% block og_title %}Text — {{ site_host }}{% endblock %}
 
 {% block content %}
 <h2>Text</h2>

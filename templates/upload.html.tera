@@ -1,6 +1,6 @@
 {% extends "base" %}
 
-{% block title %}Upload — skibidi67.ceo{% endblock %}
+{% block title %}Upload — {{ site_host }}{% endblock %}
 
 {% block content %}
 <h2>Upload</h2>

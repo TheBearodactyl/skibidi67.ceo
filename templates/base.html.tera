@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}skibidi67.ceo{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  <title>{% block title %}{{ site_host | default(value="skibidi67.ceo") }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Share media for free on {{ site_host | default(value="skibidi67.ceo") }}.{% endblock %}">
   <meta name="theme-color" content="#1e1e2e">
   {% block robots %}<meta name="robots" content="index, follow">{% endblock %}
 
-  <meta property="og:site_name" content="skibidi67.ceo">
-  <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  <meta property="og:site_name" content="{{ site_host | default(value="skibidi67.ceo") }}">
+  <meta property="og:title" content="{% block og_title %}{{ site_host | default(value="skibidi67.ceo") }}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Share media for free on {{ site_host | default(value="skibidi67.ceo") }}.{% endblock %}">
   <meta property="og:type" content="{% block og_type %}website{% endblock %}">
   {% block og_extra %}{% endblock %}
 
   {% block twitter_extra %}
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="{% block twitter_title %}skibidi67.ceo{% endblock %}">
-  <meta name="twitter:description" content="{% block twitter_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  <meta name="twitter:title" content="{% block twitter_title %}{{ site_host | default(value="skibidi67.ceo") }}{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Share media for free on {{ site_host | default(value="skibidi67.ceo") }}.{% endblock %}">
   {% endblock %}
 
   {% block canonical %}{% endblock %}
@@ -27,8 +27,8 @@
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    "name": "skibidi67.ceo",
-    "url": "https://skibidi67.ceo"
+    "name": "{{ site_host | default(value="skibidi67.ceo") }}",
+    "url": "https://{{ site_host | default(value="skibidi67.ceo") }}"
   }
   </script>
   {% endblock %}
@@ -157,7 +157,7 @@
 <body>
 
 <header>
-  <h1><a href="/ui">skibidi67.ceo</a></h1>
+  <h1><a href="/ui">{{ site_host | default(value="skibidi67.ceo") }}</a></h1>
   <nav aria-label="Site navigation">
     <a href="/ui/videos">Videos</a> | <a href="/ui/audio">Audio</a> | <a href="/ui/images">Images</a> | <a href="/ui/text">Text</a>
     {% if user %}

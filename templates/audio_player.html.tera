@@ -1,8 +1,8 @@
 {% extends "base" %}
 
-{% block title %}{{ video.title }} — skibidi67.ceo{% endblock %}
+{% block title %}{{ video.title }} — {{ site_host }}{% endblock %}
 {% block og_title %}{{ video.title }}{% endblock %}
-{% block og_description %}Listen to {{ video.title }} on skibidi67.ceo — uploaded by {{ video.uploaded_by_name }}{% endblock %}
+{% block og_description %}Listen to {{ video.title }} on {{ site_host }} — uploaded by {{ video.uploaded_by_name }}{% endblock %}
 
 {% block og_extra %}
 <meta property="og:type" content="music.song">

@@ -1,19 +1,19 @@
 {% extends "base" %}
 
-{% block title %}Home — skibidi67.ceo{% endblock %}
-{% block og_title %}skibidi67.ceo{% endblock %}
-{% block og_description %}Browse and share videos, audio, and images for free on skibidi67.ceo.{% endblock %}
-{% block meta_description %}Browse and share videos, audio, and images for free on skibidi67.ceo.{% endblock %}
+{% block title %}Home — {{ site_host }}{% endblock %}
+{% block og_title %}{{ site_host }}{% endblock %}
+{% block og_description %}Browse and share videos, audio, and images for free on {{ site_host }}.{% endblock %}
+{% block meta_description %}Browse and share videos, audio, and images for free on {{ site_host }}.{% endblock %}
 
-{% block canonical %}<link rel="canonical" href="https://skibidi67.ceo/ui">{% endblock %}
+{% block canonical %}<link rel="canonical" href="{{ base_url }}/ui">{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "name": "skibidi67.ceo",
-  "url": "https://skibidi67.ceo",
+  "name": "{{ site_host }}",
+  "url": "{{ base_url }}",
   "description": "Free media sharing platform for videos, audio, and images."
 }
 </script>

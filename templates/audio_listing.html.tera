@@ -1,7 +1,7 @@
 {% extends "base" %}
 
-{% block title %}Audio — skibidi67.ceo{% endblock %}
-{% block og_title %}Audio — skibidi67.ceo{% endblock %}
+{% block title %}Audio — {{ site_host }}{% endblock %}
+{% block og_title %}Audio — {{ site_host }}{% endblock %}
 
 {% block content %}
 <h2>Audio</h2>

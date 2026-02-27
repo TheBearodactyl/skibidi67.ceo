@@ -6,19 +6,29 @@ use {
     serde::Serialize,
 };
 
-pub struct BaseUrl(pub String);
+pub struct SiteInfo {
+    pub base_url: String,
+    pub site_host: String,
+}
 
 #[rocket::async_trait]
-impl<'r> rocket::request::FromRequest<'r> for BaseUrl {
+impl<'r> rocket::request::FromRequest<'r> for SiteInfo {
     type Error = ();
 
     async fn from_request(
         req: &'r rocket::request::Request<'_>,
     ) -> rocket::request::Outcome<Self, Self::Error> {
         if let Ok(url) = std::env::var("BASE_URL") {
-            return rocket::request::Outcome::Success(BaseUrl(
-                url.trim_end_matches('/').to_owned(),
-            ));
+            let url = url.trim_end_matches('/').to_owned();
+            let site_host = url
+                .strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+                .unwrap_or(&url)
+                .to_owned();
+            return rocket::request::Outcome::Success(SiteInfo {
+                base_url: url,
+                site_host,
+            });
         }
 
         let host = req.headers().get_one("Host").unwrap_or("localhost");
@@ -28,7 +38,10 @@ impl<'r> rocket::request::FromRequest<'r> for BaseUrl {
             "https"
         };
 
-        rocket::request::Outcome::Success(BaseUrl(format!("{}://{}", scheme, host)))
+        rocket::request::Outcome::Success(SiteInfo {
+            base_url: format!("{}://{}", scheme, host),
+            site_host: host.to_owned(),
+        })
     }
 }
 
@@ -157,7 +170,7 @@ pub fn index() -> Redirect {
 }
 
 #[get("/ui")]
-pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let show_nsfw_on_homepage: bool = std::env::var("SHOW_NSFW_ON_HOMEPAGE")
         .unwrap_or_default()
         .parse()
@@ -232,6 +245,8 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
+            base_url: site.base_url,
             latest_videos,
             latest_audio,
             latest_images,
@@ -242,7 +257,7 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
 }
 
 #[get("/ui/videos")]
-pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -261,13 +276,14 @@ pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             videos,
         },
     )
 }
 
 #[get("/ui/audio")]
-pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -286,13 +302,14 @@ pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             items,
         },
     )
 }
 
 #[get("/ui/images")]
-pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -311,6 +328,7 @@ pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             items,
         },
     )
@@ -319,13 +337,15 @@ pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
 fn render_media_player(
     id: &str,
     template_name: &'static str,
-    base_url: BaseUrl,
+    site: SiteInfo,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let site_host = site.site_host;
+    let base_url = site.base_url;
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
 
     if video.is_none() {
@@ -335,6 +355,7 @@ fn render_media_player(
                 user: platform_user.map(UserCtx::from_platform),
                 is_admin,
                 has_github_oauth,
+                site_host: site_host.clone(),
                 title: "Not Found",
                 message: "This media does not exist or has been deleted.",
             },
@@ -350,6 +371,7 @@ fn render_media_player(
                 user: Option::<UserCtx>::None,
                 is_admin,
                 has_github_oauth,
+                site_host: site_host.clone(),
                 title: "Login Required",
                 message: "You must be logged in to view NSFW content.",
             },
@@ -357,9 +379,8 @@ fn render_media_player(
     }
 
     let api_prefix = media_url_prefix(&video.media_type);
-    let base = base_url.0;
-    let file_url = format!("{}/{}/{}/file", base, api_prefix, id);
-    let embed_url = format!("{}/e/{}", base, id);
+    let file_url = format!("{}/{}/{}/file", base_url, api_prefix, id);
+    let embed_url = format!("{}/e/{}", base_url, id);
 
     let comments: Vec<CommentCtx> = state
         .comments
@@ -385,6 +406,8 @@ fn render_media_player(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host,
+            base_url,
             video,
             file_url,
             embed_url,
@@ -397,35 +420,35 @@ fn render_media_player(
 #[get("/ui/videos/<id>")]
 pub fn player(
     id: &str,
-    base_url: BaseUrl,
+    site: SiteInfo,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "player", base_url, user, state)
+    render_media_player(id, "player", site, user, state)
 }
 
 #[get("/ui/audio/<id>")]
 pub fn audio_player(
     id: &str,
-    base_url: BaseUrl,
+    site: SiteInfo,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "audio_player", base_url, user, state)
+    render_media_player(id, "audio_player", site, user, state)
 }
 
 #[get("/ui/images/<id>")]
 pub fn image_viewer(
     id: &str,
-    base_url: BaseUrl,
+    site: SiteInfo,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "image_viewer", base_url, user, state)
+    render_media_player(id, "image_viewer", site, user, state)
 }
 
 #[get("/ui/text")]
-pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -444,6 +467,7 @@ pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) ->
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             items,
         },
     )
@@ -452,11 +476,11 @@ pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) ->
 #[get("/ui/text/<id>")]
 pub fn text_viewer(
     id: &str,
-    base_url: BaseUrl,
+    site: SiteInfo,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "text_viewer", base_url, user, state)
+    render_media_player(id, "text_viewer", site, user, state)
 }
 
 #[get("/e/<id>?<start>&<end>")]
@@ -464,7 +488,7 @@ pub fn embed(
     id: &str,
     start: Option<u64>,
     end: Option<u64>,
-    base_url: BaseUrl,
+    site: SiteInfo,
     state: &State<AppState>,
 ) -> Template {
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
@@ -481,10 +505,9 @@ pub fn embed(
 
     let video = video.unwrap();
     let api_prefix = media_url_prefix(&video.media_type);
-    let base = base_url.0;
 
     let file_url = {
-        let base_file = format!("{}/{}/{}/file", base, api_prefix, id);
+        let base_file = format!("{}/{}/{}/file", site.base_url, api_prefix, id);
         match (start, end) {
             (None, None) => base_file,
             (s, e) => {
@@ -503,6 +526,8 @@ pub fn embed(
     Template::render(
         "embed",
         context! {
+            site_host: site.site_host,
+            base_url: site.base_url,
             video,
             file_url,
         },
@@ -510,7 +535,7 @@ pub fn embed(
 }
 
 #[get("/ui/upload")]
-pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -521,12 +546,13 @@ pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>) -> 
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
         },
     )
 }
 
 #[get("/ui/admin")]
-pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -554,6 +580,7 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> 
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             videos,
             video_count: state.videos.len(),
             disk_human,
@@ -565,6 +592,7 @@ async fn ui_delete_impl(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
+    site: SiteInfo,
 ) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
@@ -604,6 +632,7 @@ async fn ui_delete_impl(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            site_host: site.site_host,
             title,
             message,
         },
@@ -615,8 +644,9 @@ pub async fn ui_delete_video(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
+    site: SiteInfo,
 ) -> Template {
-    ui_delete_impl(id, user, state).await
+    ui_delete_impl(id, user, state, site).await
 }
 
 #[rocket::post("/ui/audio/<id>/delete")]
@@ -624,8 +654,9 @@ pub async fn ui_delete_audio(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
+    site: SiteInfo,
 ) -> Template {
-    ui_delete_impl(id, user, state).await
+    ui_delete_impl(id, user, state, site).await
 }
 
 #[rocket::post("/ui/images/<id>/delete")]
@@ -633,8 +664,9 @@ pub async fn ui_delete_image(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
+    site: SiteInfo,
 ) -> Template {
-    ui_delete_impl(id, user, state).await
+    ui_delete_impl(id, user, state, site).await
 }
 
 #[rocket::post("/ui/text/<id>/delete")]
@@ -642,6 +674,7 @@ pub async fn ui_delete_text(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
+    site: SiteInfo,
 ) -> Template {
-    ui_delete_impl(id, user, state).await
+    ui_delete_impl(id, user, state, site).await
 }

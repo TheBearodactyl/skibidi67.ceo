@@ -1,6 +1,6 @@
 {% extends "base" %}
 
-{% block title %}Admin — skibidi67.ceo{% endblock %}
+{% block title %}Admin — {{ site_host }}{% endblock %}
 
 {% block content %}
 {% if not is_admin %}

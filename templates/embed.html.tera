@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ video.title }} — skibidi67.ceo</title>
+  <title>{{ video.title }} — {{ site_host }}</title>
 
-  <meta property="og:site_name" content="skibidi67.ceo">
+  <meta property="og:site_name" content="{{ site_host }}">
   <meta property="og:title" content="{{ video.title }}">
-  <meta property="og:description" content="uploaded by {{ video.uploaded_by_name }} on skibidi67.ceo">
-  <meta property="og:url" content="https://skibidi67.ceo/ui/videos/{{ video.id }}">
+  <meta property="og:description" content="uploaded by {{ video.uploaded_by_name }} on {{ site_host }}">
+  <meta property="og:url" content="{{ base_url }}/ui/videos/{{ video.id }}">
 
 {% if video.media_type == "audio" %}
   <meta property="og:type" content="music.song">

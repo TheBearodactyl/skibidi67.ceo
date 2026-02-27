@@ -1,8 +1,8 @@
 {% extends "base" %}
 
-{% block title %}{{ video.title }} — skibidi67.ceo{% endblock %}
+{% block title %}{{ video.title }} — {{ site_host }}{% endblock %}
 {% block og_title %}{{ video.title }}{% endblock %}
-{% block og_description %}View {{ video.title }} on skibidi67.ceo — uploaded by {{ video.uploaded_by_name }}{% endblock %}
+{% block og_description %}View {{ video.title }} on {{ site_host }} — uploaded by {{ video.uploaded_by_name }}{% endblock %}
 
 {% block content %}
 <h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
