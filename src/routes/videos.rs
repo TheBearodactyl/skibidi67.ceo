@@ -17,7 +17,7 @@ use {
     },
     serde::Deserialize,
     sha2::{Digest, Sha256},
-    std::path::Path,
+    std::{path::Path, process::Stdio},
     tlsh2::TlshDefaultBuilder,
     tokio::io::AsyncWriteExt,
     uuid::Uuid,
@@ -103,9 +103,11 @@ pub fn get_video(id: &str, state: &State<AppState>) -> AppResult<Json<VideoMeta>
         .ok_or(AppError::VideoNotFound)
 }
 
-#[get("/videos/<id>/file")]
+#[get("/videos/<id>/file?<start>&<end>")]
 pub async fn stream_video(
     id: &str,
+    start: Option<u64>,
+    end: Option<u64>,
     state: &State<AppState>,
     range: RangeHeader,
 ) -> Result<VideoResponse, AppError> {
@@ -122,6 +124,28 @@ pub async fn stream_video(
     };
 
     let file_path = Path::new(&state.upload_dir).join(&filename);
+
+    if start.is_some() || end.is_some() {
+        let start_ms = start.unwrap_or(0);
+        let end_ms = end;
+
+        if let Some(e) = end_ms
+            && e <= start_ms
+        {
+            return Err(AppError::Internal(
+                "end must be greater than start".to_owned(),
+            ));
+        }
+
+        let data = extract_segment(&file_path, start_ms, end_ms).await?;
+        return Ok(VideoResponse {
+            data,
+            content_type: "video/mp4".to_owned(),
+            content_range: String::new(),
+            partial: false,
+        });
+    }
+
     let file_bytes = fs::read(&file_path).await?;
     let file_size = file_bytes.len() as u64;
 
@@ -809,8 +833,8 @@ pub fn delete_comment(
         .position(|c| c.id == comment_id)
         .ok_or(AppError::VideoNotFound)?;
 
-    let is_own_comment = comments[idx].author_id == user.0.id
-        && comments[idx].author_provider == user.0.provider;
+    let is_own_comment =
+        comments[idx].author_id == user.0.id && comments[idx].author_provider == user.0.provider;
     if !is_own_comment && !is_admin {
         return Err(AppError::Forbidden);
     }
@@ -847,8 +871,7 @@ pub fn patch_comments_disabled(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let mut meta = state.videos.get_mut(id).ok_or(AppError::VideoNotFound)?;
     let is_admin = state.is_admin(&user.0.provider, user.0.id);
-    let is_owner =
-        meta.uploaded_by_id == user.0.id && meta.uploaded_by_provider == user.0.provider;
+    let is_owner = meta.uploaded_by_id == user.0.id && meta.uploaded_by_provider == user.0.provider;
     if !is_owner && !is_admin {
         return Err(AppError::Forbidden);
     }
@@ -904,4 +927,50 @@ fn extension_for_mime(mime: &str) -> &'static str {
         "video/x-msvideo" => ".avi",
         _ => ".bin",
     }
+}
+
+async fn extract_segment(
+    file_path: &Path,
+    start_ms: u64,
+    end_ms: Option<u64>,
+) -> Result<Vec<u8>, AppError> {
+    let path_str = file_path
+        .to_str()
+        .ok_or_else(|| AppError::Internal("Invalid file path".to_owned()))?;
+
+    let ss = format!("{}.{:03}", start_ms / 1000, start_ms % 1000);
+
+    let mut args: Vec<&str> = vec!["-accurate_seek", "-ss", &ss, "-i", path_str];
+
+    let end_str;
+    if let Some(e) = end_ms {
+        end_str = format!("{}.{:03}", e / 1000, e % 1000);
+        args.extend(["-to", &end_str]);
+    }
+
+    args.extend([
+        "-c",
+        "copy",
+        "-f",
+        "mp4",
+        "-movflags",
+        "frag_keyframe+empty_moov",
+        "pipe:1",
+    ]);
+
+    let output = rocket::tokio::process::Command::new("ffmpeg")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await
+        .map_err(|e| AppError::Internal(format!("ffmpeg launch failed: {e}")))?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return Err(AppError::Internal(
+            "ffmpeg failed — segment may be out of range".to_owned(),
+        ));
+    }
+
+    Ok(output.stdout)
 }

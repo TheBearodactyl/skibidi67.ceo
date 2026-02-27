@@ -188,8 +188,8 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
     )
 }
 
-#[get("/e/<id>")]
-pub fn embed(id: &str, state: &State<AppState>) -> Template {
+#[get("/e/<id>?<start>&<end>")]
+pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppState>) -> Template {
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
 
     if video.is_none() {
@@ -202,7 +202,22 @@ pub fn embed(id: &str, state: &State<AppState>) -> Template {
         );
     }
 
-    let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
+    let video_url = {
+        let base = format!("https://skibidi67.ceo/videos/{}/file", id);
+        match (start, end) {
+            (None, None) => base,
+            (s, e) => {
+                let mut parts = vec![];
+                if let Some(s) = s {
+                    parts.push(format!("start={}", s));
+                }
+                if let Some(e) = e {
+                    parts.push(format!("end={}", e));
+                }
+                format!("{}?{}", base, parts.join("&"))
+            }
+        }
+    };
 
     Template::render(
         "embed",
