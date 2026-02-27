@@ -940,12 +940,12 @@ async fn extract_segment(
 
     let mut args: Vec<String> = Vec::new();
 
+    args.extend(["-i".into(), path_str.to_owned()]);
+
     if start_ms > 0 {
         let ss = format!("{}.{:03}", start_ms / 1000, start_ms % 1000);
         args.extend(["-ss".into(), ss]);
     }
-
-    args.extend(["-i".into(), path_str.to_owned()]);
 
     if let Some(e) = end_ms {
         let duration_ms = e.saturating_sub(start_ms);
