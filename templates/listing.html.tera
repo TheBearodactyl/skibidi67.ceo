@@ -52,7 +52,7 @@
     <li>
       <a href="/ui/videos/{{ v.id }}">{{ v.title }}</a>
       {% if v.nsfw %}[NSFW]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_human }}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
     </li>
     {% endfor %}
   </ul>
@@ -68,7 +68,7 @@
     <li>
       <a href="/ui/audio/{{ v.id }}">{{ v.title }}</a>
       {% if v.nsfw %}[NSFW]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_human }}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
     </li>
     {% endfor %}
   </ul>
@@ -84,7 +84,7 @@
     <li>
       <a href="/ui/images/{{ v.id }}">{{ v.title }}</a>
       {% if v.nsfw %}[NSFW]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_human }}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
     </li>
     {% endfor %}
   </ul>

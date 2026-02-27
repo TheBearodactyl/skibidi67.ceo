@@ -30,7 +30,7 @@
           <td><a href="/ui/{% if v.media_type == "audio" %}audio{% elif v.media_type == "image" %}images{% else %}videos{% endif %}/{{ v.id }}">{{ v.title }}</a></td>
           <td>{{ v.media_type }}</td>
           <td>{{ v.uploaded_by_name }}</td>
-          <td>{{ v.uploaded_at }}</td>
+          <td>{{ v.uploaded_at_display }}</td>
           <td>{{ v.size_human }}</td>
           <td>
             {% if v.nsfw %}NSFW{% endif %}

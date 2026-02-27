@@ -16,7 +16,7 @@
       {% if v.nsfw %}[NSFW]{% endif %}
       {% if v.unlisted %}[unlisted]{% endif %}
       {% if v.references_id %}[dedup]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at }}, {{ v.size_human }}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
     </li>
     {% endfor %}
   </ul>

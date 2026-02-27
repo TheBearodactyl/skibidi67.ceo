@@ -41,7 +41,7 @@
   <dt>Uploaded by</dt>
   <dd>{{ video.uploaded_by_name }}</dd>
   <dt>Date</dt>
-  <dd>{{ video.uploaded_at }}</dd>
+  <dd>{{ video.uploaded_at_display }}</dd>
   <dt>Size</dt>
   <dd>{{ video.size_human }}</dd>
   <dt>SHA-256</dt>
