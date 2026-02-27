@@ -31,8 +31,10 @@
 {% endif %}
 
 {% if video.nsfw %}
-<p><strong>[NSFW]</strong> <a href="#" onclick="reveal(); return false;">Click to reveal</a></p>
-<img id="v" src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%; filter: blur(20px)">
+<p><strong>[NSFW]</strong> <span id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to view (18+ only)</a></span></p>
+<div id="nsfw-media" hidden>
+<img id="v" src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%">
+</div>
 {% else %}
 <img src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%">
 {% endif %}
@@ -87,8 +89,9 @@
 <script>
 var API = '/images';
 function reveal() {
-  var v = document.getElementById('v');
-  if (v) v.style.filter = '';
+  if (!confirm('This content is marked NSFW. Are you 18 or older?')) return;
+  document.getElementById('nsfw-gate').hidden = true;
+  document.getElementById('nsfw-media').hidden = false;
 }
 
 async function delete_media(id) {

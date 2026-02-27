@@ -49,15 +49,47 @@
 </head>
 <body>
 {% if video.media_type == "audio" %}
+  {% if video.nsfw %}
+  <div id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to listen (18+ only — NSFW)</a></div>
+  <div id="nsfw-media" hidden>
   <audio controls autoplay>
     <source src="{{ file_url }}" type="{{ video.content_type }}">
   </audio>
+  </div>
+  {% else %}
+  <audio controls autoplay>
+    <source src="{{ file_url }}" type="{{ video.content_type }}">
+  </audio>
+  {% endif %}
 {% elif video.media_type == "image" %}
+  {% if video.nsfw %}
+  <div id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to view (18+ only — NSFW)</a></div>
+  <div id="nsfw-media" hidden>
   <img src="{{ file_url }}" alt="{{ video.title }}">
+  </div>
+  {% else %}
+  <img src="{{ file_url }}" alt="{{ video.title }}">
+  {% endif %}
 {% else %}
+  {% if video.nsfw %}
+  <div id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to watch (18+ only — NSFW)</a></div>
+  <div id="nsfw-media" hidden>
   <video controls autoplay>
     <source src="{{ file_url }}" type="{{ video.content_type }}">
   </video>
+  </div>
+  {% else %}
+  <video controls autoplay>
+    <source src="{{ file_url }}" type="{{ video.content_type }}">
+  </video>
+  {% endif %}
 {% endif %}
+<script>
+function reveal() {
+  if (!confirm('This content is marked NSFW. Are you 18 or older?')) return;
+  document.getElementById('nsfw-gate').hidden = true;
+  document.getElementById('nsfw-media').hidden = false;
+}
+</script>
 </body>
 </html>

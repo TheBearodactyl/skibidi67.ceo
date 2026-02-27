@@ -291,6 +291,19 @@ fn render_media_player(
         );
     }
 
+    if video.as_ref().unwrap().nsfw && platform_user.is_none() {
+        return Template::render(
+            "message",
+            context! {
+                user: Option::<UserCtx>::None,
+                is_admin,
+                has_github_oauth,
+                title: "Login Required",
+                message: "You must be logged in to view NSFW content.",
+            },
+        );
+    }
+
     let video_ref = video.as_ref().unwrap();
     let api_prefix = media_url_prefix(&video_ref.media_type);
     let file_url = format!("https://skibidi67.ceo/{}/{}/file", api_prefix, id);

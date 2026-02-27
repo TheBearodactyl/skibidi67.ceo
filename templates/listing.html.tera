@@ -2,6 +2,22 @@
 
 {% block title %}Home — skibidi67.ceo{% endblock %}
 {% block og_title %}skibidi67.ceo{% endblock %}
+{% block og_description %}Browse and share videos, audio, and images for free on skibidi67.ceo.{% endblock %}
+{% block meta_description %}Browse and share videos, audio, and images for free on skibidi67.ceo.{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="https://skibidi67.ceo/ui">{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "skibidi67.ceo",
+  "url": "https://skibidi67.ceo",
+  "description": "Free media sharing platform for videos, audio, and images."
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <h2>Home</h2>
@@ -11,10 +27,16 @@
   <p><strong>Random pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
   {% if featured.media_type == "audio" %}
     {% if featured.nsfw %}
-    <p><strong>[NSFW]</strong> <a href="#" onclick="reveal_featured(); return false;">Click to reveal</a></p>
-    <audio id="featured-v" controls style="width:100%; filter: blur(20px)">
-      <source src="/audio/{{ featured.id }}/file" type="{{ featured.content_type }}">
-    </audio>
+      {% if user %}
+      <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to listen (18+ only)</a></span></p>
+      <div id="featured-media" hidden>
+      <audio id="featured-v" controls style="width:100%">
+        <source src="/audio/{{ featured.id }}/file" type="{{ featured.content_type }}">
+      </audio>
+      </div>
+      {% else %}
+      <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to listen</a></p>
+      {% endif %}
     {% else %}
     <audio controls style="width:100%">
       <source src="/audio/{{ featured.id }}/file" type="{{ featured.content_type }}">
@@ -22,17 +44,29 @@
     {% endif %}
   {% elif featured.media_type == "image" %}
     {% if featured.nsfw %}
-    <p><strong>[NSFW]</strong> <a href="#" onclick="reveal_featured(); return false;">Click to reveal</a></p>
-    <img id="featured-v" src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%; filter: blur(20px)">
+      {% if user %}
+      <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to view (18+ only)</a></span></p>
+      <div id="featured-media" hidden>
+      <img id="featured-v" src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%">
+      </div>
+      {% else %}
+      <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to view</a></p>
+      {% endif %}
     {% else %}
     <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%">
     {% endif %}
   {% else %}
     {% if featured.nsfw %}
-    <p><strong>[NSFW]</strong> <a href="#" onclick="reveal_featured(); return false;">Click to reveal</a></p>
-    <video id="featured-v" controls style="filter: blur(20px); max-width:100%">
-      <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
-    </video>
+      {% if user %}
+      <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to watch (18+ only)</a></span></p>
+      <div id="featured-media" hidden>
+      <video id="featured-v" controls style="max-width:100%">
+        <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
+      </video>
+      </div>
+      {% else %}
+      <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to watch</a></p>
+      {% endif %}
     {% else %}
     <video controls style="max-width:100%">
       <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
@@ -95,10 +129,9 @@
 {% block scripts %}
 <script>
 function reveal_featured() {
-  var v = document.getElementById('featured-v');
-  if (v) v.style.filter = '';
+  if (!confirm('This content is marked NSFW. Are you 18 or older?')) return;
+  document.getElementById('featured-gate').hidden = true;
+  document.getElementById('featured-media').hidden = false;
 }
 </script>
 {% endblock %}
-
-

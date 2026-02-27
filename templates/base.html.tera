@@ -4,10 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}skibidi67.ceo{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  <meta name="theme-color" content="#1e1e2e">
+  {% block robots %}<meta name="robots" content="index, follow">{% endblock %}
+
   <meta property="og:site_name" content="skibidi67.ceo">
   <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}share media for free on skibidi67.ceo{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
   {% block og_extra %}{% endblock %}
+
+  {% block twitter_extra %}
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{% block twitter_title %}skibidi67.ceo{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Share media for free on skibidi67.ceo.{% endblock %}">
+  {% endblock %}
+
+  {% block canonical %}{% endblock %}
+
+  {% block structured_data %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "skibidi67.ceo",
+    "url": "https://skibidi67.ceo"
+  }
+  </script>
+  {% endblock %}
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
@@ -51,39 +76,20 @@
       padding: 1rem 2rem;
     }
 
-    a {
-      color: var(--blue);
-    }
-
-    a:visited {
-      color: var(--lavender);
-    }
-
-    a:hover {
-      color: var(--sapphire);
-    }
+    a { color: var(--blue); }
+    a:visited { color: var(--lavender); }
+    a:hover { color: var(--sapphire); }
 
     header h1 a {
       color: var(--mauve);
       text-decoration: none;
       font-weight: 700;
     }
+    header h1 a:visited { color: var(--mauve); }
+    header h1 a:hover { color: var(--pink); }
 
-    header h1 a:visited {
-      color: var(--mauve);
-    }
-
-    header h1 a:hover {
-      color: var(--pink);
-    }
-
-    nav {
-      color: var(--subtext1);
-    }
-
-    nav strong {
-      color: var(--peach);
-    }
+    nav { color: var(--subtext1); }
+    nav strong { color: var(--peach); }
 
     hr {
       border: none;
@@ -91,15 +97,9 @@
       margin: 0.75rem 0;
     }
 
-    h2 {
-      color: var(--lavender);
-    }
+    h2 { color: var(--lavender); }
 
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-
+    table { border-collapse: collapse; width: 100%; }
     th {
       background-color: var(--mantle);
       color: var(--subtext1);
@@ -107,16 +107,12 @@
       padding: 0.4rem 0.6rem;
       border-bottom: 1px solid var(--surface1);
     }
-
     td {
       padding: 0.4rem 0.6rem;
       border-bottom: 1px solid var(--surface0);
       color: var(--text);
     }
-
-    tr:hover td {
-      background-color: var(--surface0);
-    }
+    tr:hover td { background-color: var(--surface0); }
 
     button {
       background-color: var(--surface1);
@@ -127,11 +123,7 @@
       cursor: pointer;
       font-family: 'Open Sans', sans-serif;
     }
-
-    button:hover {
-      background-color: var(--surface2);
-      color: var(--text);
-    }
+    button:hover { background-color: var(--surface2); color: var(--text); }
 
     input[type="text"],
     input[type="file"] {
@@ -142,15 +134,10 @@
       border-radius: 4px;
       font-family: 'Open Sans', sans-serif;
     }
-
     input[type="text"]:focus,
-    input[type="file"]:focus {
-      outline: 2px solid var(--blue);
-    }
+    input[type="file"]:focus { outline: 2px solid var(--blue); }
 
-    label {
-      color: var(--subtext1);
-    }
+    label { color: var(--subtext1); }
 
     code, pre {
       background-color: var(--mantle);
@@ -159,37 +146,19 @@
       padding: 0.1rem 0.3rem;
       font-size: 0.9em;
     }
+    pre { padding: 0.75rem; overflow-x: auto; }
 
-    pre {
-      padding: 0.75rem;
-      overflow-x: auto;
-    }
-
-    dt {
-      color: var(--subtext0);
-      font-weight: 600;
-      margin-top: 0.5rem;
-    }
-
-    dd {
-      color: var(--text);
-      margin-left: 1rem;
-    }
-
-    em {
-      color: var(--subtext1);
-    }
-
-    strong {
-      color: var(--peach);
-    }
+    dt { color: var(--subtext0); font-weight: 600; margin-top: 0.5rem; }
+    dd { color: var(--text); margin-left: 1rem; }
+    em { color: var(--subtext1); }
+    strong { color: var(--peach); }
   </style>
 </head>
 <body>
 
 <header>
   <h1><a href="/ui">skibidi67.ceo</a></h1>
-  <nav>
+  <nav aria-label="Site navigation">
     <a href="/ui/videos">Videos</a> | <a href="/ui/audio">Audio</a> | <a href="/ui/images">Images</a>
     {% if user %}
       | Signed in as <strong>{{ user.username }}</strong>
@@ -207,7 +176,7 @@
 <main>
   {% block content %}{% endblock %}
 
-  <p>consider sending me some clams over on my <a href="https://ko-fi.com/thebearodactyl">ko-fi</a> :D</p>
+  <p>consider sending me some clams over on my <a href="https://ko-fi.com/thebearodactyl" rel="noopener">ko-fi</a> :D</p>
 </main>
 
 {% block scripts %}{% endblock %}
