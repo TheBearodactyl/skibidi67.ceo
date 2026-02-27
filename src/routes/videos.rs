@@ -946,7 +946,6 @@ async fn extract_segment(
     }
 
     args.extend(["-i".into(), path_str.to_owned()]);
-    args.extend(["-ss".into(), "0.000".into()]);
 
     if let Some(e) = end_ms {
         let duration_ms = e.saturating_sub(start_ms);
@@ -955,10 +954,14 @@ async fn extract_segment(
     }
 
     args.extend([
-        "-c".into(),
-        "copy".into(),
-        "-avoid_negative_ts".into(),
-        "make_zero".into(),
+        "-c:v".into(),
+        "libx264".into(),
+        "-preset".into(),
+        "ultrafast".into(),
+        "-crf".into(),
+        "18".into(),
+        "-c:a".into(),
+        "aac".into(),
         "-f".into(),
         "mp4".into(),
         "-movflags".into(),
