@@ -167,6 +167,7 @@ fn rocket() -> _ {
                 routes::images::patch_comments_disabled,
                 routes::images::patch_comments_disabled_unauthorized,
                 routes::ui::index,
+                routes::ui::favicon,
                 routes::ui::listing,
                 routes::ui::video_listing,
                 routes::ui::audio_listing,

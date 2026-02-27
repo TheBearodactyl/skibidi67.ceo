@@ -1,7 +1,7 @@
 use {
     crate::{auth::AuthenticatedUser, models::PlatformUser, state::AppState},
     rand::seq::IndexedRandom,
-    rocket::{State, get, response::Redirect},
+    rocket::{State, get, http::ContentType, response::Redirect},
     rocket_dyn_templates::{Template, context},
     serde::Serialize,
 };
@@ -111,6 +111,11 @@ fn media_url_prefix(media_type: &str) -> &'static str {
         "image" => "images",
         _ => "videos",
     }
+}
+
+#[get("/favicon.ico")]
+pub fn favicon() -> (ContentType, &'static [u8]) {
+    (ContentType::Icon, include_bytes!("../../favicon.ico"))
 }
 
 #[get("/")]
