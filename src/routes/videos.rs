@@ -938,24 +938,30 @@ async fn extract_segment(
         .to_str()
         .ok_or_else(|| AppError::Internal("Invalid file path".to_owned()))?;
 
-    let ss = format!("{}.{:03}", start_ms / 1000, start_ms % 1000);
+    let mut args: Vec<String> = Vec::new();
 
-    let mut args: Vec<&str> = vec!["-accurate_seek", "-ss", &ss, "-i", path_str];
+    if start_ms > 0 {
+        let ss = format!("{}.{:03}", start_ms / 1000, start_ms % 1000);
+        args.extend(["-ss".into(), ss]);
+    }
 
-    let end_str;
+    args.extend(["-i".into(), path_str.to_owned()]);
+
     if let Some(e) = end_ms {
-        end_str = format!("{}.{:03}", e / 1000, e % 1000);
-        args.extend(["-to", &end_str]);
+        let end_s = format!("{}.{:03}", e / 1000, e % 1000);
+        args.extend(["-to".into(), end_s]);
     }
 
     args.extend([
-        "-c",
-        "copy",
-        "-f",
-        "mp4",
-        "-movflags",
-        "frag_keyframe+empty_moov",
-        "pipe:1",
+        "-c".into(),
+        "copy".into(),
+        "-avoid_negative_ts".into(),
+        "make_zero".into(),
+        "-f".into(),
+        "mp4".into(),
+        "-movflags".into(),
+        "frag_keyframe+empty_moov".into(),
+        "pipe:1".into(),
     ]);
 
     let output = rocket::tokio::process::Command::new("ffmpeg")
