@@ -64,7 +64,8 @@ struct VideoCtx {
     uploaded_by_provider: String,
     uploaded_by_id: u64,
     uploaded_by_name: String,
-    uploaded_at: String,
+    uploaded_at: chrono::DateTime<chrono::Utc>,
+    uploaded_at_display: String,
     nsfw: bool,
     unlisted: bool,
     comments_disabled: bool,
@@ -94,7 +95,8 @@ impl VideoCtx {
             uploaded_by_provider: v.uploaded_by_provider.clone(),
             uploaded_by_id: v.uploaded_by_id,
             uploaded_by_name: v.uploaded_by_name.clone(),
-            uploaded_at: v.uploaded_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+            uploaded_at: v.uploaded_at,
+            uploaded_at_display: v.uploaded_at.format("%Y-%m-%d %H:%M UTC").to_string(),
             nsfw: v.nsfw,
             unlisted: v.unlisted,
             comments_disabled: v.comments_disabled,
@@ -129,26 +131,43 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
 
-    let mut latest_videos: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "video").cloned().collect();
-    latest_videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    let mut latest_videos: Vec<VideoCtx> = all
+        .iter()
+        .filter(|v| v.media_type == "video")
+        .cloned()
+        .collect();
+    latest_videos.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
     latest_videos.truncate(5);
 
-    let mut latest_audio: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "audio").cloned().collect();
-    latest_audio.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    let mut latest_audio: Vec<VideoCtx> = all
+        .iter()
+        .filter(|v| v.media_type == "audio")
+        .cloned()
+        .collect();
+    latest_audio.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
     latest_audio.truncate(5);
 
-    let mut latest_images: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "image").cloned().collect();
-    latest_images.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    let mut latest_images: Vec<VideoCtx> = all
+        .iter()
+        .filter(|v| v.media_type == "image")
+        .cloned()
+        .collect();
+    latest_images.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
     latest_images.truncate(5);
 
-    let featured: Option<VideoCtx> = {
+    let featured: Option<VideoCtx> = if all.is_empty() {
+        None
+    } else {
         let sfw: Vec<_> = all.iter().filter(|v| !v.nsfw).collect();
-        let pool = if sfw.is_empty() {
-            all.iter().collect::<Vec<_>>()
+        if sfw.is_empty() {
+            if all.is_empty() {
+                None
+            } else {
+                all.choose(&mut rand::rng()).cloned()
+            }
         } else {
-            sfw
-        };
-        pool.choose(&mut rand::rng()).map(|v| (*v).clone())
+            sfw.choose(&mut rand::rng()).map(|v| (*v).clone())
+        }
     };
 
     Template::render(
@@ -177,7 +196,7 @@ pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
         .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("video/"))
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
 
     Template::render(
         "videos",
@@ -202,7 +221,7 @@ pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
         .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("audio/"))
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
 
     Template::render(
         "audio_listing",
@@ -227,7 +246,7 @@ pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
         .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("image/"))
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
 
     Template::render(
         "image_listing",
@@ -308,12 +327,20 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
 }
 
 #[get("/ui/audio/<id>")]
-pub fn audio_player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn audio_player(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
     render_media_player(id, "audio_player", user, state)
 }
 
 #[get("/ui/images/<id>")]
-pub fn image_viewer(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+pub fn image_viewer(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
     render_media_player(id, "image_viewer", user, state)
 }
 
@@ -387,7 +414,7 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> 
         .iter()
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
 
     let disk_human: String = {
         let total_bytes: u64 = state
