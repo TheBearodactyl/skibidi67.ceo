@@ -948,8 +948,9 @@ async fn extract_segment(
     args.extend(["-i".into(), path_str.to_owned()]);
 
     if let Some(e) = end_ms {
-        let end_s = format!("{}.{:03}", e / 1000, e % 1000);
-        args.extend(["-to".into(), end_s]);
+        let duration_ms = e.saturating_sub(start_ms);
+        let duration_s = format!("{}.{:03}", duration_ms / 1000, duration_ms % 1000);
+        args.extend(["-t".into(), duration_s]);
     }
 
     args.extend([
