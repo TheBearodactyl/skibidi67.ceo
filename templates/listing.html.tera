@@ -24,7 +24,7 @@
 
 {% if featured %}
 <div style="margin-bottom:2rem">
-  <p><strong>Random pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
+  <p><strong>Random pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% elif featured.media_type == "text" %}text{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
   {% if featured.media_type == "audio" %}
     {% if featured.nsfw %}
       {% if user %}
@@ -55,6 +55,14 @@
     {% else %}
     <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%">
     {% endif %}
+  {% elif featured.media_type == "text" %}
+    <pre id="featured-text" style="white-space:pre-wrap; word-wrap:break-word; background:var(--mantle); padding:1rem; border-radius:4px; max-height:20rem; overflow:auto;">Loading…</pre>
+    <script>
+    fetch('/text/{{ featured.id }}/file').then(function(r){return r.text()}).then(function(t){
+      var el = document.getElementById('featured-text');
+      el.textContent = t.length > 2000 ? t.substring(0, 2000) + '\n…' : t;
+    });
+    </script>
   {% else %}
     {% if featured.nsfw %}
       {% if user %}
@@ -123,6 +131,22 @@
     {% endfor %}
   </ul>
   <p><a href="/ui/images">View all images →</a></p>
+{% endif %}
+
+<h3>Latest Text</h3>
+{% if latest_texts | length == 0 %}
+  <p>No text files yet.{% if user %} <a href="/ui/upload">Upload some!</a>{% endif %}</p>
+{% else %}
+  <ul>
+    {% for v in latest_texts %}
+    <li>
+      <a href="/ui/text/{{ v.id }}">{{ v.title }}</a>
+      {% if v.nsfw %}[NSFW]{% endif %}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
+    </li>
+    {% endfor %}
+  </ul>
+  <p><a href="/ui/text">View all text →</a></p>
 {% endif %}
 {% endblock %}
 

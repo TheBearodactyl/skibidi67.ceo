@@ -6,6 +6,32 @@ use {
     serde::Serialize,
 };
 
+pub struct BaseUrl(pub String);
+
+#[rocket::async_trait]
+impl<'r> rocket::request::FromRequest<'r> for BaseUrl {
+    type Error = ();
+
+    async fn from_request(
+        req: &'r rocket::request::Request<'_>,
+    ) -> rocket::request::Outcome<Self, Self::Error> {
+        if let Ok(url) = std::env::var("BASE_URL") {
+            return rocket::request::Outcome::Success(BaseUrl(
+                url.trim_end_matches('/').to_owned(),
+            ));
+        }
+
+        let host = req.headers().get_one("Host").unwrap_or("localhost");
+        let scheme = if host.starts_with("localhost") || host.starts_with("127.") {
+            "http"
+        } else {
+            "https"
+        };
+
+        rocket::request::Outcome::Success(BaseUrl(format!("{}://{}", scheme, host)))
+    }
+}
+
 #[derive(Serialize)]
 struct CommentCtx {
     id: String,
@@ -78,6 +104,8 @@ impl VideoCtx {
             "audio"
         } else if v.content_type.starts_with("image/") {
             "image"
+        } else if v.content_type.starts_with("text/") {
+            "text"
         } else {
             "video"
         }
@@ -109,9 +137,11 @@ fn media_url_prefix(media_type: &str) -> &'static str {
     match media_type {
         "audio" => "audio",
         "image" => "images",
+        "text" => "text",
         _ => "videos",
     }
 }
+
 
 #[get("/favicon.ico")]
 pub fn favicon() -> (ContentType, &'static [u8]) {
@@ -128,55 +158,73 @@ pub fn index() -> Redirect {
 
 #[get("/ui")]
 pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    let show_nsfw_on_homepage: bool = std::env::var("SHOW_NSFW_ON_HOMEPAGE")
+        .expect("Failed to get env variable")
+        .parse()
+        .unwrap_or(false);
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
 
-    let all: Vec<VideoCtx> = state
-        .videos
-        .iter()
-        .filter(|e| !e.value().unlisted)
-        .map(|e| VideoCtx::from_meta(e.value()))
-        .collect();
+    let mut videos: Vec<VideoCtx> = Vec::new();
+    let mut audio: Vec<VideoCtx> = Vec::new();
+    let mut images: Vec<VideoCtx> = Vec::new();
+    let mut texts: Vec<VideoCtx> = Vec::new();
 
-    let mut latest_videos: Vec<VideoCtx> = all
-        .iter()
-        .filter(|v| v.media_type == "video")
-        .cloned()
-        .collect();
-    latest_videos.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    latest_videos.truncate(5);
+    for entry in state.videos.iter() {
+        let v = entry.value();
+        if v.unlisted {
+            continue;
+        }
+        let ctx = VideoCtx::from_meta(v);
+        match ctx.media_type.as_str() {
+            "video" => videos.push(ctx),
+            "audio" => audio.push(ctx),
+            "image" => images.push(ctx),
+            "text" => texts.push(ctx),
+            _ => {}
+        }
+    }
 
-    let mut latest_audio: Vec<VideoCtx> = all
-        .iter()
-        .filter(|v| v.media_type == "audio")
-        .cloned()
-        .collect();
-    latest_audio.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    latest_audio.truncate(5);
+    videos.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    audio.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    images.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    texts.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
 
-    let mut latest_images: Vec<VideoCtx> = all
-        .iter()
-        .filter(|v| v.media_type == "image")
-        .cloned()
-        .collect();
-    latest_images.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    latest_images.truncate(5);
+    let all: Vec<&VideoCtx> = if show_nsfw_on_homepage {
+        videos
+            .iter()
+            .chain(audio.iter())
+            .chain(images.iter())
+            .chain(texts.iter())
+            .collect()
+    } else {
+        videos
+            .iter()
+            .chain(audio.iter())
+            .chain(images.iter())
+            .chain(texts.iter())
+            .filter(|v| !v.nsfw)
+            .collect()
+    };
 
     let featured: Option<VideoCtx> = if all.is_empty() {
-        None
+        videos
+            .iter()
+            .chain(audio.iter())
+            .chain(images.iter())
+            .chain(texts.iter())
+            .collect::<Vec<_>>()
+            .choose(&mut rand::rng())
+            .map(|v| (*v).clone())
     } else {
-        let sfw: Vec<_> = all.iter().filter(|v| !v.nsfw).collect();
-        if sfw.is_empty() {
-            if all.is_empty() {
-                None
-            } else {
-                all.choose(&mut rand::rng()).cloned()
-            }
-        } else {
-            sfw.choose(&mut rand::rng()).map(|v| (*v).clone())
-        }
+        all.choose(&mut rand::rng()).map(|v| (*v).clone())
     };
+
+    let latest_videos: Vec<VideoCtx> = videos.into_iter().take(5).collect();
+    let latest_audio: Vec<VideoCtx> = audio.into_iter().take(5).collect();
+    let latest_images: Vec<VideoCtx> = images.into_iter().take(5).collect();
+    let latest_texts: Vec<VideoCtx> = texts.into_iter().take(5).collect();
 
     Template::render(
         "listing",
@@ -187,6 +235,7 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
             latest_videos,
             latest_audio,
             latest_images,
+            latest_texts,
             featured,
         },
     )
@@ -270,6 +319,7 @@ pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -
 fn render_media_player(
     id: &str,
     template_name: &'static str,
+    base_url: BaseUrl,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
@@ -291,7 +341,9 @@ fn render_media_player(
         );
     }
 
-    if video.as_ref().unwrap().nsfw && platform_user.is_none() {
+    let video = video.unwrap();
+
+    if video.nsfw && platform_user.is_none() {
         return Template::render(
             "message",
             context! {
@@ -304,10 +356,10 @@ fn render_media_player(
         );
     }
 
-    let video_ref = video.as_ref().unwrap();
-    let api_prefix = media_url_prefix(&video_ref.media_type);
-    let file_url = format!("https://skibidi67.ceo/{}/{}/file", api_prefix, id);
-    let embed_url = format!("https://skibidi67.ceo/e/{}", id);
+    let api_prefix = media_url_prefix(&video.media_type);
+    let base = base_url.0;
+    let file_url = format!("{}/{}/{}/file", base, api_prefix, id);
+    let embed_url = format!("{}/e/{}", base, id);
 
     let comments: Vec<CommentCtx> = state
         .comments
@@ -343,30 +395,78 @@ fn render_media_player(
 }
 
 #[get("/ui/videos/<id>")]
-pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
-    render_media_player(id, "player", user, state)
+pub fn player(
+    id: &str,
+    base_url: BaseUrl,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    render_media_player(id, "player", base_url, user, state)
 }
 
 #[get("/ui/audio/<id>")]
 pub fn audio_player(
     id: &str,
+    base_url: BaseUrl,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "audio_player", user, state)
+    render_media_player(id, "audio_player", base_url, user, state)
 }
 
 #[get("/ui/images/<id>")]
 pub fn image_viewer(
     id: &str,
+    base_url: BaseUrl,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
 ) -> Template {
-    render_media_player(id, "image_viewer", user, state)
+    render_media_player(id, "image_viewer", base_url, user, state)
+}
+
+#[get("/ui/text")]
+pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
+
+    let mut items: Vec<VideoCtx> = state
+        .videos
+        .iter()
+        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("text/"))
+        .map(|e| VideoCtx::from_meta(e.value()))
+        .collect();
+    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
+
+    Template::render(
+        "text_listing",
+        context! {
+            user: platform_user.map(UserCtx::from_platform),
+            is_admin,
+            has_github_oauth,
+            items,
+        },
+    )
+}
+
+#[get("/ui/text/<id>")]
+pub fn text_viewer(
+    id: &str,
+    base_url: BaseUrl,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    render_media_player(id, "text_viewer", base_url, user, state)
 }
 
 #[get("/e/<id>?<start>&<end>")]
-pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppState>) -> Template {
+pub fn embed(
+    id: &str,
+    start: Option<u64>,
+    end: Option<u64>,
+    base_url: BaseUrl,
+    state: &State<AppState>,
+) -> Template {
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
 
     if video.is_none() {
@@ -379,13 +479,14 @@ pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppSt
         );
     }
 
-    let video_ref = video.as_ref().unwrap();
-    let api_prefix = media_url_prefix(&video_ref.media_type);
+    let video = video.unwrap();
+    let api_prefix = media_url_prefix(&video.media_type);
+    let base = base_url.0;
 
     let file_url = {
-        let base = format!("https://skibidi67.ceo/{}/{}/file", api_prefix, id);
+        let base_file = format!("{}/{}/{}/file", base, api_prefix, id);
         match (start, end) {
-            (None, None) => base,
+            (None, None) => base_file,
             (s, e) => {
                 let mut parts = vec![];
                 if let Some(s) = s {
@@ -394,7 +495,7 @@ pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppSt
                 if let Some(e) = e {
                     parts.push(format!("end={}", e));
                 }
-                format!("{}?{}", base, parts.join("&"))
+                format!("{}?{}", base_file, parts.join("&"))
             }
         }
     };
@@ -529,6 +630,15 @@ pub async fn ui_delete_audio(
 
 #[rocket::post("/ui/images/<id>/delete")]
 pub async fn ui_delete_image(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    ui_delete_impl(id, user, state).await
+}
+
+#[rocket::post("/ui/text/<id>/delete")]
+pub async fn ui_delete_text(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,

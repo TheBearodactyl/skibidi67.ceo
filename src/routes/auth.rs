@@ -2,9 +2,12 @@ use {
     crate::{
         auth::{AuthenticatedUser, SESSION_COOKIE},
         error::AppError,
-        models::{GithubTokenResponse, GithubUser, OsuTokenResponse, OsuUser, PlatformUser, Session},
+        models::{
+            GithubTokenResponse, GithubUser, OsuTokenResponse, OsuUser, PlatformUser, Session,
+        },
         state::AppState,
     },
+    hashbrown::HashMap,
     rocket::{
         State, get,
         http::{Cookie, CookieJar, SameSite, Status},
@@ -12,7 +15,6 @@ use {
         serde::json::Json,
     },
     serde_json::Value,
-    std::collections::HashMap,
     uuid::Uuid,
 };
 

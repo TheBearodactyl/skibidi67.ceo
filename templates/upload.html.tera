@@ -15,7 +15,7 @@
     </p>
     <p>
       <label for="file">File (max 100 MB)</label><br>
-      <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-msvideo,audio/mpeg,audio/ogg,audio/wav,audio/flac,audio/aac,audio/webm,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif" required>
+      <input id="file" type="file" required>
     </p>
     <p>
       <label>
@@ -50,16 +50,33 @@
 <script>
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
+const KNOWN_MEDIA_PREFIXES = ['video/', 'audio/', 'image/'];
+
+function isKnownMediaType(type) {
+  return KNOWN_MEDIA_PREFIXES.some(function(p) { return type.startsWith(p); });
+}
+
 function getApiPrefix(fileType) {
   if (fileType.startsWith('audio/')) return '/audio';
   if (fileType.startsWith('image/')) return '/images';
+  if (fileType === 'text/plain') return '/text';
   return '/videos';
 }
 
 function getUiPrefix(fileType) {
   if (fileType.startsWith('audio/')) return '/ui/audio/';
   if (fileType.startsWith('image/')) return '/ui/images/';
+  if (fileType === 'text/plain') return '/ui/text/';
   return '/ui/videos/';
+}
+
+function detectTextFile(file) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader();
+    reader.onload = function() { resolve(true); };
+    reader.onerror = function() { resolve(false); };
+    reader.readAsText(file);
+  });
 }
 
 document.getElementById('upload-form').addEventListener('submit', async function(e) {
@@ -75,15 +92,29 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   if (!file) { alert('Please choose a file.'); return; }
 
+  var effectiveType = file.type;
+
+  if (!isKnownMediaType(effectiveType)) {
+    prog.hidden = false;
+    prog.textContent = 'Checking file content…';
+    var isText = await detectTextFile(file);
+    if (isText) {
+      effectiveType = 'text/plain';
+    } else {
+      alert('Unsupported file type. The file must be a video, audio, image, or valid text (UTF-8) file.');
+      return;
+    }
+  }
+
   prog.hidden = false;
   prog.textContent = 'Uploading… 0%';
   btn.disabled = true;
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, title, nsfw, unlisted, comments_disabled, prog, result);
+      await chunked_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result);
     } else {
-      await single_upload(file, title, nsfw, unlisted, comments_disabled, prog, result);
+      await single_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result);
     }
   } catch (err) {
     prog.textContent = 'Upload failed: ' + err.message;
@@ -92,13 +123,13 @@ document.getElementById('upload-form').addEventListener('submit', async function
   }
 });
 
-function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
-  const api = getApiPrefix(file.type);
-  const ui_prefix = getUiPrefix(file.type);
+function single_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = getApiPrefix(effectiveType);
+  const ui_prefix = getUiPrefix(effectiveType);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', api + '/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled);
-    xhr.setRequestHeader('Content-Type', file.type);
+    xhr.setRequestHeader('Content-Type', effectiveType);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable)
@@ -123,12 +154,12 @@ function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, res
   });
 }
 
-async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
-  const api = getApiPrefix(file.type);
-  const ui_prefix = getUiPrefix(file.type);
+async function chunked_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = getApiPrefix(effectiveType);
+  const ui_prefix = getUiPrefix(effectiveType);
   const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
 
-  const init_res = await fetch(api + '/upload/init?content_type=' + encodeURIComponent(file.type), {
+  const init_res = await fetch(api + '/upload/init?content_type=' + encodeURIComponent(effectiveType), {
     method: 'POST'
   });
   if (!init_res.ok) {

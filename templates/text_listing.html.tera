@@ -1,0 +1,26 @@
+{% extends "base" %}
+
+{% block title %}Text — skibidi67.ceo{% endblock %}
+{% block og_title %}Text — skibidi67.ceo{% endblock %}
+
+{% block content %}
+<h2>Text</h2>
+
+{% if items | length == 0 %}
+  <p>No text files yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</p>
+{% else %}
+  <ul>
+    {% for v in items %}
+    <li>
+      <a href="/ui/text/{{ v.id }}">{{ v.title }}</a>
+      {% if v.nsfw %}[NSFW]{% endif %}
+      {% if v.unlisted %}[unlisted]{% endif %}
+      {% if v.references_id %}[dedup]{% endif %}
+      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
+    </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<p><a href="/ui">← Back</a></p>
+{% endblock %}

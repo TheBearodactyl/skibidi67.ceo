@@ -1,10 +1,9 @@
 use {
     crate::models::{Comment, Session, VideoMeta},
     dashmap::DashMap,
-    std::{
-        collections::{HashMap, HashSet},
-        path::Path,
-    },
+    hashbrown::{HashMap, HashSet},
+    std::path::Path,
+    tlsh2::TlshDefault,
 };
 
 pub struct UploadSession {
@@ -158,11 +157,8 @@ impl AppState {
     }
 
     pub fn find_similar_tlsh(&self, new_tlsh_hex: &str) -> Option<String> {
-        use tlsh2::TlshDefault;
-        let new_tlsh: TlshDefault = match new_tlsh_hex.parse() {
-            Ok(t) => t,
-            Err(_) => return None,
-        };
+        let new_tlsh: TlshDefault = new_tlsh_hex.parse().ok()?;
+
         for entry in self.video_tlsh.iter() {
             if let Ok(existing) = entry.value().parse::<TlshDefault>() {
                 let distance = existing.diff(&new_tlsh, true);
@@ -171,6 +167,7 @@ impl AppState {
                 }
             }
         }
+
         None
     }
 

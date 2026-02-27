@@ -15,9 +15,9 @@ use {
     },
     serde::Deserialize,
     sha2::{Digest, Sha256},
-    std::{path::Path, process::Stdio},
+    std::{io::SeekFrom, path::Path, process::Stdio},
     tlsh2::TlshDefaultBuilder,
-    tokio::io::AsyncWriteExt,
+    tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     uuid::Uuid,
 };
 
@@ -48,6 +48,9 @@ pub const ALLOWED_IMAGE_TYPES: &[&str] = &[
     "image/avif",
 ];
 
+pub const ALLOWED_TEXT_TYPES: &[&str] = &["text/plain"];
+
+const MAGIC_READ_BYTES: usize = 256;
 
 pub struct RangeHeader(pub Option<String>);
 
@@ -67,7 +70,7 @@ pub struct MediaResponse {
     pub data: Vec<u8>,
     pub content_type: String,
     pub content_range: String,
-    pub partial: bool,
+    pub status: rocket::http::Status,
 }
 
 impl<'r> rocket::response::Responder<'r, 'static> for MediaResponse {
@@ -75,15 +78,9 @@ impl<'r> rocket::response::Responder<'r, 'static> for MediaResponse {
         self,
         _req: &'r rocket::request::Request<'_>,
     ) -> rocket::response::Result<'static> {
-        let status = if self.partial {
-            rocket::http::Status::PartialContent
-        } else {
-            rocket::http::Status::Ok
-        };
-
         let mut builder = rocket::response::Response::build();
         builder
-            .status(status)
+            .status(self.status)
             .raw_header("Content-Type", self.content_type)
             .raw_header("Content-Length", self.data.len().to_string())
             .raw_header("Accept-Ranges", "bytes");
@@ -127,6 +124,10 @@ pub fn is_image_mime(mime: &str) -> bool {
     mime.starts_with("image/")
 }
 
+pub fn is_text_mime(mime: &str) -> bool {
+    mime == "text/plain"
+}
+
 pub fn verify_magic_bytes(bytes: &[u8], mime: &str) -> bool {
     if bytes.len() < 4 {
         return false;
@@ -158,6 +159,8 @@ pub fn verify_magic_bytes(bytes: &[u8], mime: &str) -> bool {
         }
         "image/avif" => bytes.len() >= 12 && bytes[4..8] == *b"ftyp",
 
+        "text/plain" => std::str::from_utf8(bytes).is_ok(),
+
         _ => false,
     }
 }
@@ -184,6 +187,7 @@ pub fn extension_for_mime(mime: &str) -> &'static str {
         "image/webp" => ".webp",
         "image/svg+xml" => ".svg",
         "image/avif" => ".avif",
+        "text/plain" => ".txt",
         _ => ".bin",
     }
 }
@@ -267,7 +271,10 @@ pub async fn stream_file(
 
     let file_path = Path::new(&state.upload_dir).join(&filename);
 
-    if allow_segment_extraction && is_video_mime(&meta.content_type) && (start.is_some() || end.is_some()) {
+    if allow_segment_extraction
+        && is_video_mime(&meta.content_type)
+        && (start.is_some() || end.is_some())
+    {
         let start_ms = start.unwrap_or(0);
         let end_ms = end;
 
@@ -284,41 +291,42 @@ pub async fn stream_file(
             data,
             content_type: "video/mp4".to_owned(),
             content_range: String::new(),
-            partial: false,
+            status: Status::Ok,
         });
     }
 
-    let file_bytes = fs::read(&file_path).await?;
-    let file_size = file_bytes.len() as u64;
+    let mut file = fs::File::open(&file_path).await.map_err(AppError::Io)?;
+    let file_size = file.metadata().await?.len();
 
     if file_size == 0 {
         return Ok(MediaResponse {
             data: vec![],
             content_type: meta.content_type.clone(),
             content_range: String::new(),
-            partial: false,
+            status: Status::Ok,
         });
     }
 
-    let (start, end, partial) = if let Some(ref range_val) = range.0 {
+    let (range_start, range_end, partial) = if let Some(ref range_val) = range.0 {
         if let Some(bytes) = range_val.strip_prefix("bytes=") {
             let parts: Vec<&str> = bytes.splitn(2, '-').collect();
-            let start: u64 = parts[0].parse().unwrap_or(0);
-            let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
+            let rs: u64 = parts[0].parse().unwrap_or(0);
+            let re: u64 = if parts.len() > 1 && !parts[1].is_empty() {
                 parts[1].parse().unwrap_or(file_size - 1)
             } else {
                 file_size - 1
             };
-            let end = end.min(file_size - 1);
-            if start > end {
+            let re = re.min(file_size - 1);
+
+            if rs > re {
                 return Ok(MediaResponse {
                     data: vec![],
                     content_type: meta.content_type.clone(),
                     content_range: format!("bytes */{}", file_size),
-                    partial: true,
+                    status: Status::RangeNotSatisfiable,
                 });
             }
-            (start, end, true)
+            (rs, re, true)
         } else {
             (0, file_size - 1, false)
         }
@@ -326,9 +334,14 @@ pub async fn stream_file(
         (0, file_size - 1, false)
     };
 
-    let data = file_bytes[start as usize..=end as usize].to_vec();
+    let read_len = (range_end - range_start + 1) as usize;
+    let mut data = vec![0u8; read_len];
+
+    file.seek(SeekFrom::Start(range_start)).await?;
+    file.read_exact(&mut data).await.map_err(AppError::Io)?;
+
     let content_range = if partial {
-        format!("bytes {}-{}/{}", start, end, file_size)
+        format!("bytes {}-{}/{}", range_start, range_end, file_size)
     } else {
         String::new()
     };
@@ -337,8 +350,20 @@ pub async fn stream_file(
         data,
         content_type: meta.content_type.clone(),
         content_range,
-        partial,
+        status: if partial {
+            Status::PartialContent
+        } else {
+            Status::Ok
+        },
     })
+}
+
+async fn read_magic_bytes(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut file = fs::File::open(path).await?;
+    let mut buf = vec![0u8; MAGIC_READ_BYTES];
+    let n = file.read(&mut buf).await?;
+    buf.truncate(n);
+    Ok(buf)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -354,21 +379,18 @@ pub async fn process_uploaded_file(
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     let size_bytes_initial = fs::metadata(&temp_path).await?.len();
 
-    let verify_path = temp_path.clone();
-    let magic_mime = base_mime_in.to_owned();
-    let verify_result = task::spawn_blocking(move || -> Result<(), AppError> {
-        let bytes = std::fs::read(&verify_path)?;
-        if !verify_magic_bytes(&bytes, &magic_mime) {
+    let magic_bytes = read_magic_bytes(&temp_path).await.map_err(AppError::Io)?;
+    if !verify_magic_bytes(&magic_bytes, base_mime_in) {
+        let _ = fs::remove_file(&temp_path).await;
+        return Err(AppError::MagicMismatch);
+    }
+
+    if is_text_mime(base_mime_in) {
+        let file_bytes = fs::read(&temp_path).await.map_err(AppError::Io)?;
+        if std::str::from_utf8(&file_bytes).is_err() {
+            let _ = fs::remove_file(&temp_path).await;
             return Err(AppError::MagicMismatch);
         }
-        Ok(())
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    if let Err(e) = verify_result {
-        let _ = fs::remove_file(&temp_path).await;
-        return Err(e);
     }
 
     let temp_id = temp_path
@@ -391,8 +413,16 @@ pub async fn process_uploaded_file(
                 temp_path.to_str().unwrap(),
                 "-c:v",
                 "libx264",
+                "-preset",
+                "slow",
+                "-crf",
+                "17",
+                "-pix_fmt",
+                "yuv420p",
                 "-c:a",
                 "aac",
+                "-b:a",
+                "192k",
                 "-movflags",
                 "+faststart",
                 converted_path.to_str().unwrap(),
@@ -414,8 +444,7 @@ pub async fn process_uploaded_file(
 
         base_mime = "video/mp4".to_owned();
         ext = ".mp4";
-        let meta = fs::metadata(&temp_path).await?;
-        size_bytes = meta.len();
+        size_bytes = fs::metadata(&temp_path).await?.len();
     }
 
     let hash_path = temp_path.clone();
@@ -427,8 +456,7 @@ pub async fn process_uploaded_file(
             let sha256 = digest.encode_hex::<String>();
 
             let tlsh_hex = if compute_tlsh {
-                TlshDefaultBuilder::build_from(&bytes)
-                    .and_then(|t| std::str::from_utf8(&t.hash()).ok().map(|s| s.to_owned()))
+                TlshDefaultBuilder::build_from(&bytes).map(|t| t.hash().encode_hex::<String>())
             } else {
                 None
             };
@@ -519,6 +547,7 @@ pub async fn process_uploaded_file(
         references_id: None,
     };
 
+    state.persist_video(&meta);
     state
         .video_hashes
         .insert(sha256_hex.clone(), video_id.clone());
@@ -526,7 +555,6 @@ pub async fn process_uploaded_file(
         state.video_tlsh.insert(video_id.clone(), tlsh_val.clone());
     }
     state.videos.insert(video_id.clone(), meta.clone());
-    state.persist_video(&meta);
 
     Ok((
         Status::Created,
@@ -538,6 +566,7 @@ pub async fn process_uploaded_file(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_upload(
     title: &str,
     nsfw: Option<bool>,
@@ -568,6 +597,7 @@ pub async fn handle_upload(
     let ext = extension_for_mime(base_mime);
     let temp_filename = format!("tmp_{}{}", temp_id, ext);
     let temp_path = Path::new(&state.upload_dir).join(&temp_filename);
+
     let written = data.open(100.mebibytes()).into_file(&temp_path).await?;
 
     if !written.is_complete() {
@@ -651,6 +681,10 @@ pub async fn handle_upload_chunk(
     let chunk_path = chunk_dir.join(format!("{}", chunk_index));
 
     let written = data.open(6.mebibytes()).into_file(&chunk_path).await?;
+    if !written.is_complete() {
+        let _ = fs::remove_file(&chunk_path).await;
+        return Err(AppError::FileTooLarge);
+    }
 
     {
         let mut session = state
@@ -665,6 +699,7 @@ pub async fn handle_upload_chunk(
     Ok(Json(serde_json::json!({ "received": written.n.written })))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_complete_upload(
     upload_id: &str,
     title: &str,
@@ -706,16 +741,21 @@ pub async fn handle_complete_upload(
 
         for i in 0..session.chunk_count {
             let chunk_path = chunk_dir.join(format!("{}", i));
-            let chunk_data = fs::read(&chunk_path)
+
+            let chunk_meta = fs::metadata(&chunk_path)
                 .await
                 .map_err(|_| AppError::Internal(format!("Missing chunk {}", i)))?;
-            total_size += chunk_data.len() as u64;
 
+            total_size += chunk_meta.len();
             if total_size > 100 * 1024 * 1024 {
                 let _ = fs::remove_file(&temp_path).await;
                 let _ = fs::remove_dir_all(&chunk_dir).await;
                 return Err(AppError::FileTooLarge);
             }
+
+            let chunk_data = fs::read(&chunk_path)
+                .await
+                .map_err(|_| AppError::Internal(format!("Failed to read chunk {}", i)))?;
 
             outfile.write_all(&chunk_data).await?;
         }
@@ -744,7 +784,9 @@ pub fn handle_list(state: &State<AppState>, mime_prefix: &str) -> Json<Vec<Video
     let mut items: Vec<VideoMeta> = state
         .videos
         .iter()
-        .filter(|entry| !entry.value().unlisted && entry.value().content_type.starts_with(mime_prefix))
+        .filter(|entry| {
+            !entry.value().unlisted && entry.value().content_type.starts_with(mime_prefix)
+        })
         .map(|entry| entry.value().clone())
         .collect();
 
@@ -811,7 +853,10 @@ pub async fn handle_delete(
     })))
 }
 
-pub fn handle_get_comments(id: &str, state: &State<AppState>) -> Result<Json<Vec<Comment>>, AppError> {
+pub fn handle_get_comments(
+    id: &str,
+    state: &State<AppState>,
+) -> Result<Json<Vec<Comment>>, AppError> {
     if !state.videos.contains_key(id) {
         return Err(AppError::VideoNotFound);
     }
