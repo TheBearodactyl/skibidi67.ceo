@@ -2,32 +2,28 @@
 
 {% block title %}{{ video.title }} — skibidi67.ceo{% endblock %}
 {% block og_title %}{{ video.title }}{% endblock %}
-{% block og_description %}Watch {{ video.title }} on skibidi67.ceo — uploaded by {{ video.uploaded_by_name }}{% endblock %}
+{% block og_description %}View {{ video.title }} on skibidi67.ceo — uploaded by {{ video.uploaded_by_name }}{% endblock %}
 
 {% block og_extra %}
-<meta property="og:type" content="video.other">
+<meta property="og:type" content="article">
 <meta property="og:url" content="{{ embed_url }}">
-<meta property="og:video" content="{{ file_url }}">
-<meta property="og:video:secure_url" content="{{ file_url }}">
-<meta property="og:video:type" content="{{ video.content_type }}">
-<meta property="og:video:width" content="1280">
-<meta property="og:video:height" content="720">
-<meta name="twitter:card" content="player">
-<meta name="twitter:player" content="{{ embed_url }}">
-<meta name="twitter:player:width" content="1280">
-<meta name="twitter:player:height" content="720">
+<meta property="og:image" content="{{ file_url }}">
+<meta property="og:image:secure_url" content="{{ file_url }}">
+<meta property="og:image:type" content="{{ video.content_type }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ file_url }}">
 {% endblock %}
 
 {% block content %}
 <h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
 
 {% if video.references_id %}
-<p><em>This post shares a file with <a href="/ui/videos/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
+<p><em>This post shares a file with <a href="/ui/images/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
 {% endif %}
 
 {% if is_admin %}
 <p>
-  <button onclick="delete_video('{{ video.id }}')">Delete</button>
+  <button onclick="delete_media('{{ video.id }}')">Delete</button>
   <button onclick="toggle_nsfw('{{ video.id }}', {{ video.nsfw }})">
     {% if video.nsfw %}Mark as SFW{% else %}Mark as NSFW{% endif %}
   </button>
@@ -36,13 +32,9 @@
 
 {% if video.nsfw %}
 <p><strong>[NSFW]</strong> <a href="#" onclick="reveal(); return false;">Click to reveal</a></p>
-<video id="v" controls style="filter: blur(20px)">
-  <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
-</video>
+<img id="v" src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%; filter: blur(20px)">
 {% else %}
-<video controls>
-  <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
-</video>
+<img src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%">
 {% endif %}
 
 <dl>
@@ -54,8 +46,6 @@
   <dd>{{ video.size_human }}</dd>
   <dt>SHA-256</dt>
   <dd><code>{{ video.sha256 }}</code></dd>
-  {% if video.tlsh_hash %}<dt>TLSH</dt>
-  <dd><code>{{ video.tlsh_hash }}</code></dd>{% endif %}
 </dl>
 
 <hr>
@@ -90,25 +80,26 @@
 {% endfor %}
 </div>
 
-<p><a href="/ui/videos">← Back to videos</a></p>
+<p><a href="/ui/images">← Back to images</a></p>
 {% endblock %}
 
 {% block scripts %}
 <script>
+var API = '/images';
 function reveal() {
   var v = document.getElementById('v');
   if (v) v.style.filter = '';
 }
 
-async function delete_video(id) {
+async function delete_media(id) {
   if (!confirm('Delete this?')) return;
-  const res = await fetch('/videos/' + id, { method: 'DELETE' });
-  if (res.ok) window.location.href = '/ui/videos';
+  const res = await fetch(API + '/' + id, { method: 'DELETE' });
+  if (res.ok) window.location.href = '/ui/images';
   else alert('Error: ' + (await res.json()).error);
 }
 
 async function toggle_nsfw(id, current) {
-  const res = await fetch('/videos/' + id + '/nsfw', {
+  const res = await fetch(API + '/' + id + '/nsfw', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nsfw: !current }),
@@ -118,7 +109,7 @@ async function toggle_nsfw(id, current) {
 }
 
 async function toggle_comments(id, current) {
-  const res = await fetch('/videos/' + id + '/comments_disabled', {
+  const res = await fetch(API + '/' + id + '/comments_disabled', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ comments_disabled: !current }),
@@ -127,9 +118,9 @@ async function toggle_comments(id, current) {
   else alert('Error: ' + (await res.json()).error);
 }
 
-async function delete_comment(videoId, commentId) {
+async function delete_comment(mediaId, commentId) {
   if (!confirm('Delete this comment?')) return;
-  const res = await fetch('/videos/' + videoId + '/comments/' + commentId, { method: 'DELETE' });
+  const res = await fetch(API + '/' + mediaId + '/comments/' + commentId, { method: 'DELETE' });
   if (res.ok) document.getElementById('comment-' + commentId)?.remove();
   else alert('Error: ' + (await res.json()).error);
 }
@@ -140,7 +131,7 @@ if (form) {
     e.preventDefault();
     var text = document.getElementById('comment-text').value.trim();
     if (!text) return;
-    const res = await fetch('/videos/{{ video.id }}/comments', {
+    const res = await fetch(API + '/{{ video.id }}/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text }),

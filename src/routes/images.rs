@@ -5,7 +5,7 @@ use {
         models::{Comment, VideoMeta},
         routes::media::{
             self, CommentsDisabledPatch, CommentBody, MediaResponse, NsfwPatch, RangeHeader,
-            ALLOWED_VIDEO_TYPES,
+            ALLOWED_IMAGE_TYPES,
         },
         state::AppState,
     },
@@ -18,33 +18,31 @@ use {
     },
 };
 
-#[get("/videos")]
-pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
-    media::handle_list(state, "video/")
+#[get("/images")]
+pub fn list_images(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
+    media::handle_list(state, "image/")
 }
 
-#[get("/videos/<id>")]
-pub fn get_video(id: &str, state: &State<AppState>) -> AppResult<Json<VideoMeta>> {
+#[get("/images/<id>")]
+pub fn get_image(id: &str, state: &State<AppState>) -> AppResult<Json<VideoMeta>> {
     media::handle_get(id, state)
 }
 
-#[get("/videos/<id>/file?<start>&<end>")]
-pub async fn stream_video(
+#[get("/images/<id>/file")]
+pub async fn stream_image(
     id: &str,
-    start: Option<u64>,
-    end: Option<u64>,
     state: &State<AppState>,
     range: RangeHeader,
 ) -> Result<MediaResponse, AppError> {
-    media::stream_file(id, start, end, state, range, true).await
+    media::stream_file(id, None, None, state, range, false).await
 }
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/videos/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>",
+    "/images/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>",
     data = "<data>"
 )]
-pub async fn upload_video(
+pub async fn upload_image(
     title: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
@@ -54,19 +52,19 @@ pub async fn upload_video(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_VIDEO_TYPES).await
+    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_IMAGE_TYPES).await
 }
 
-#[post("/videos/upload/init?<content_type>")]
+#[post("/images/upload/init?<content_type>")]
 pub async fn init_upload(
     content_type: &str,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    media::handle_init_upload(content_type, user, state, ALLOWED_VIDEO_TYPES).await
+    media::handle_init_upload(content_type, user, state, ALLOWED_IMAGE_TYPES).await
 }
 
-#[put("/videos/upload/<upload_id>/<chunk_index>", data = "<data>")]
+#[put("/images/upload/<upload_id>/<chunk_index>", data = "<data>")]
 pub async fn upload_chunk(
     upload_id: &str,
     chunk_index: usize,
@@ -77,7 +75,7 @@ pub async fn upload_chunk(
     media::handle_upload_chunk(upload_id, chunk_index, data, user, state).await
 }
 
-#[post("/videos/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>")]
+#[post("/images/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>")]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
@@ -87,10 +85,10 @@ pub async fn complete_upload(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_VIDEO_TYPES).await
+    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_IMAGE_TYPES).await
 }
 
-#[post("/videos/upload/init?<_content_type>", rank = 2)]
+#[post("/images/upload/init?<_content_type>", rank = 2)]
 pub async fn init_upload_unauthorized(
     _content_type: Option<&str>,
 ) -> (Status, Json<serde_json::Value>) {
@@ -101,7 +99,7 @@ pub async fn init_upload_unauthorized(
 }
 
 #[put(
-    "/videos/upload/<_upload_id>/<_chunk_index>",
+    "/images/upload/<_upload_id>/<_chunk_index>",
     data = "<_data>",
     rank = 2
 )]
@@ -117,7 +115,7 @@ pub async fn upload_chunk_unauthorized(
 }
 
 #[post(
-    "/videos/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    "/images/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
     rank = 2
 )]
 pub async fn complete_upload_unauthorized(
@@ -134,11 +132,11 @@ pub async fn complete_upload_unauthorized(
 }
 
 #[post(
-    "/videos/upload?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    "/images/upload?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
     data = "<_data>",
     rank = 2
 )]
-pub async fn upload_video_unauthorized(
+pub async fn upload_image_unauthorized(
     _title: Option<&str>,
     _nsfw: Option<bool>,
     _unlisted: Option<bool>,
@@ -151,7 +149,7 @@ pub async fn upload_video_unauthorized(
     )
 }
 
-#[patch("/videos/<id>/nsfw", format = "json", data = "<body>")]
+#[patch("/images/<id>/nsfw", format = "json", data = "<body>")]
 pub fn patch_nsfw(
     id: &str,
     body: Json<NsfwPatch>,
@@ -161,7 +159,7 @@ pub fn patch_nsfw(
     media::handle_patch_nsfw(id, body, state)
 }
 
-#[patch("/videos/<_id>/nsfw", format = "json", data = "<_body>", rank = 2)]
+#[patch("/images/<_id>/nsfw", format = "json", data = "<_body>", rank = 2)]
 pub fn patch_nsfw_forbidden(
     _id: &str,
     _body: Json<NsfwPatch>,
@@ -172,8 +170,8 @@ pub fn patch_nsfw_forbidden(
     )
 }
 
-#[delete("/videos/<id>")]
-pub async fn delete_video(
+#[delete("/images/<id>")]
+pub async fn delete_image(
     id: &str,
     _admin: AdminUser,
     state: &State<AppState>,
@@ -181,8 +179,8 @@ pub async fn delete_video(
     media::handle_delete(id, state).await
 }
 
-#[delete("/videos/<_id>", rank = 2)]
-pub fn delete_video_forbidden(
+#[delete("/images/<_id>", rank = 2)]
+pub fn delete_image_forbidden(
     _id: &str,
     _user: AuthenticatedUser,
 ) -> (Status, Json<serde_json::Value>) {
@@ -192,20 +190,20 @@ pub fn delete_video_forbidden(
     )
 }
 
-#[delete("/videos/<_id>", rank = 3)]
-pub fn delete_video_unauthorized(_id: &str) -> (Status, Json<serde_json::Value>) {
+#[delete("/images/<_id>", rank = 3)]
+pub fn delete_image_unauthorized(_id: &str) -> (Status, Json<serde_json::Value>) {
     (
         Status::Unauthorized,
         Json(serde_json::json!({ "error": "Authentication required" })),
     )
 }
 
-#[get("/videos/<id>/comments")]
+#[get("/images/<id>/comments")]
 pub fn get_comments(id: &str, state: &State<AppState>) -> Result<Json<Vec<Comment>>, AppError> {
     media::handle_get_comments(id, state)
 }
 
-#[post("/videos/<id>/comments", format = "json", data = "<body>")]
+#[post("/images/<id>/comments", format = "json", data = "<body>")]
 pub fn add_comment(
     id: &str,
     body: Json<CommentBody>,
@@ -215,7 +213,7 @@ pub fn add_comment(
     media::handle_add_comment(id, body, user, state)
 }
 
-#[post("/videos/<_id>/comments", format = "json", data = "<_body>", rank = 2)]
+#[post("/images/<_id>/comments", format = "json", data = "<_body>", rank = 2)]
 pub fn add_comment_unauthorized(
     _id: &str,
     _body: Json<CommentBody>,
@@ -226,7 +224,7 @@ pub fn add_comment_unauthorized(
     )
 }
 
-#[delete("/videos/<id>/comments/<comment_id>")]
+#[delete("/images/<id>/comments/<comment_id>")]
 pub fn delete_comment(
     id: &str,
     comment_id: &str,
@@ -236,7 +234,7 @@ pub fn delete_comment(
     media::handle_delete_comment(id, comment_id, user, state)
 }
 
-#[delete("/videos/<_id>/comments/<_comment_id>", rank = 2)]
+#[delete("/images/<_id>/comments/<_comment_id>", rank = 2)]
 pub fn delete_comment_unauthorized(
     _id: &str,
     _comment_id: &str,
@@ -247,7 +245,7 @@ pub fn delete_comment_unauthorized(
     )
 }
 
-#[patch("/videos/<id>/comments_disabled", format = "json", data = "<body>")]
+#[patch("/images/<id>/comments_disabled", format = "json", data = "<body>")]
 pub fn patch_comments_disabled(
     id: &str,
     body: Json<CommentsDisabledPatch>,
@@ -258,7 +256,7 @@ pub fn patch_comments_disabled(
 }
 
 #[patch(
-    "/videos/<_id>/comments_disabled",
+    "/images/<_id>/comments_disabled",
     format = "json",
     data = "<_body>",
     rank = 2

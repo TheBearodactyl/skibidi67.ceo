@@ -10,12 +10,13 @@
   <p>{{ video_count }} posts, {{ disk_human }} on disk (deduplicated)</p>
 
   {% if videos | length == 0 %}
-    <p>No videos yet.</p>
+    <p>No uploads yet.</p>
   {% else %}
     <table>
       <thead>
         <tr>
           <th>Title</th>
+          <th>Type</th>
           <th>Uploader</th>
           <th>Date</th>
           <th>Size</th>
@@ -25,8 +26,9 @@
       </thead>
       <tbody>
         {% for v in videos %}
-        <tr id="row-{{ v.id }}">
-          <td><a href="/ui/videos/{{ v.id }}">{{ v.title }}</a></td>
+        <tr id="row-{{ v.id }}" data-media-type="{{ v.media_type }}">
+          <td><a href="/ui/{% if v.media_type == "audio" %}audio{% elif v.media_type == "image" %}images{% else %}videos{% endif %}/{{ v.id }}">{{ v.title }}</a></td>
+          <td>{{ v.media_type }}</td>
           <td>{{ v.uploaded_by_name }}</td>
           <td>{{ v.uploaded_at }}</td>
           <td>{{ v.size_human }}</td>
@@ -39,7 +41,7 @@
             <button onclick="toggle_nsfw('{{ v.id }}', {{ v.nsfw }})">
               {% if v.nsfw %}Mark SFW{% else %}Mark NSFW{% endif %}
             </button>
-            <button onclick="delete_video('{{ v.id }}')">Delete</button>
+            <button onclick="delete_media('{{ v.id }}')">Delete</button>
           </td>
         </tr>
         {% endfor %}
@@ -52,15 +54,23 @@
 {% block scripts %}
 {% if is_admin %}
 <script>
-async function delete_video(id) {
+function api_prefix(id) {
+  var row = document.getElementById('row-' + id);
+  var mt = row ? row.dataset.mediaType : 'video';
+  if (mt === 'audio') return '/audio';
+  if (mt === 'image') return '/images';
+  return '/videos';
+}
+
+async function delete_media(id) {
   if (!confirm('Delete ' + id + '?')) return;
-  const res = await fetch('/videos/' + id, { method: 'DELETE' });
+  const res = await fetch(api_prefix(id) + '/' + id, { method: 'DELETE' });
   if (res.ok) document.getElementById('row-' + id)?.remove();
   else alert('Error: ' + (await res.json()).error);
 }
 
 async function toggle_nsfw(id, current) {
-  const res = await fetch('/videos/' + id + '/nsfw', {
+  const res = await fetch(api_prefix(id) + '/' + id + '/nsfw', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nsfw: !current }),

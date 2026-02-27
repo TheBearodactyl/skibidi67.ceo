@@ -33,7 +33,7 @@ pub enum AppError {
     #[error("Duplicate video — identical content already exists as video '{0}'")]
     DuplicateVideo(String),
 
-    #[error("Invalid file type — only video files are accepted")]
+    #[error("Invalid file type — unsupported file type")]
     InvalidFileType,
 
     #[error("File content does not match declared type — magic bytes verification failed")]

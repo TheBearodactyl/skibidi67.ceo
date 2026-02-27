@@ -6,7 +6,7 @@
   <title>{% block title %}skibidi67.ceo{% endblock %}</title>
   <meta property="og:site_name" content="skibidi67.ceo">
   <meta property="og:title" content="{% block og_title %}skibidi67.ceo{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}share videos for free on skibidi67.ceo{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}share media for free on skibidi67.ceo{% endblock %}">
   {% block og_extra %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -190,13 +190,14 @@
 <header>
   <h1><a href="/ui">skibidi67.ceo</a></h1>
   <nav>
+    <a href="/ui/videos">Videos</a> | <a href="/ui/audio">Audio</a> | <a href="/ui/images">Images</a>
     {% if user %}
-      Signed in as <strong>{{ user.username }}</strong>
+      | Signed in as <strong>{{ user.username }}</strong>
       | <a href="/ui/upload">Upload</a>
       {% if is_admin %}| <a href="/ui/admin">Admin</a>{% endif %}
       | <a href="/auth/logout">Sign out</a>
     {% else %}
-      <a href="/auth/login">Sign in with osu!</a>
+      | <a href="/auth/login">Sign in with osu!</a>
       {% if has_github_oauth %} | <a href="/auth/github/login">Sign in with GitHub</a>{% endif %}
     {% endif %}
   </nav>

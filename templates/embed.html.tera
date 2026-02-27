@@ -8,19 +8,33 @@
   <meta property="og:site_name" content="skibidi67.ceo">
   <meta property="og:title" content="{{ video.title }}">
   <meta property="og:description" content="uploaded by {{ video.uploaded_by_name }} on skibidi67.ceo">
-  <meta property="og:type" content="video.other">
   <meta property="og:url" content="https://skibidi67.ceo/ui/videos/{{ video.id }}">
 
-  <meta property="og:video" content="{{ video_url }}">
-  <meta property="og:video:secure_url" content="{{ video_url }}">
+{% if video.media_type == "audio" %}
+  <meta property="og:type" content="music.song">
+  <meta property="og:audio" content="{{ file_url }}">
+  <meta property="og:audio:secure_url" content="{{ file_url }}">
+  <meta property="og:audio:type" content="{{ video.content_type }}">
+  <meta name="twitter:card" content="summary">
+{% elif video.media_type == "image" %}
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="{{ file_url }}">
+  <meta property="og:image:secure_url" content="{{ file_url }}">
+  <meta property="og:image:type" content="{{ video.content_type }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ file_url }}">
+{% else %}
+  <meta property="og:type" content="video.other">
+  <meta property="og:video" content="{{ file_url }}">
+  <meta property="og:video:secure_url" content="{{ file_url }}">
   <meta property="og:video:type" content="{{ video.content_type }}">
   <meta property="og:video:width" content="1920">
   <meta property="og:video:height" content="1080">
-
   <meta name="twitter:card" content="player">
-  <meta name="twitter:player" content="{{ video_url }}">
+  <meta name="twitter:player" content="{{ file_url }}">
   <meta name="twitter:player:width" content="1280">
   <meta name="twitter:player:height" content="720">
+{% endif %}
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,11 +43,21 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #1e1e2e; font-family: 'Open Sans', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     video { max-width: 100vw; max-height: 100vh; }
+    audio { width: 80%; max-width: 600px; }
+    img { max-width: 100vw; max-height: 100vh; object-fit: contain; }
   </style>
 </head>
 <body>
+{% if video.media_type == "audio" %}
+  <audio controls autoplay>
+    <source src="{{ file_url }}" type="{{ video.content_type }}">
+  </audio>
+{% elif video.media_type == "image" %}
+  <img src="{{ file_url }}" alt="{{ video.title }}">
+{% else %}
   <video controls autoplay>
-    <source src="{{ video_url }}" type="{{ video.content_type }}">
+    <source src="{{ file_url }}" type="{{ video.content_type }}">
   </video>
+{% endif %}
 </body>
 </html>

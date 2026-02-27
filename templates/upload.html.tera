@@ -3,7 +3,7 @@
 {% block title %}Upload — skibidi67.ceo{% endblock %}
 
 {% block content %}
-<h2>Upload a video</h2>
+<h2>Upload</h2>
 
 {% if not user %}
   <p>You must be <a href="/auth/login">signed in</a> to upload.</p>
@@ -14,8 +14,8 @@
       <input id="title" type="text" required maxlength="200">
     </p>
     <p>
-      <label for="file">Video file (max 100 MB)</label><br>
-      <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-msvideo" required>
+      <label for="file">File (max 100 MB)</label><br>
+      <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/x-msvideo,audio/mpeg,audio/ogg,audio/wav,audio/flac,audio/aac,audio/webm,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif" required>
     </p>
     <p>
       <label>
@@ -50,6 +50,18 @@
 <script>
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
+function getApiPrefix(fileType) {
+  if (fileType.startsWith('audio/')) return '/audio';
+  if (fileType.startsWith('image/')) return '/images';
+  return '/videos';
+}
+
+function getUiPrefix(fileType) {
+  if (fileType.startsWith('audio/')) return '/ui/audio/';
+  if (fileType.startsWith('image/')) return '/ui/images/';
+  return '/ui/videos/';
+}
+
 document.getElementById('upload-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const title  = document.getElementById('title').value.trim();
@@ -81,9 +93,11 @@ document.getElementById('upload-form').addEventListener('submit', async function
 });
 
 function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = getApiPrefix(file.type);
+  const ui_prefix = getUiPrefix(file.type);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/videos/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled);
+    xhr.open('POST', api + '/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled);
     xhr.setRequestHeader('Content-Type', file.type);
 
     xhr.upload.onprogress = (e) => {
@@ -97,7 +111,7 @@ function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, res
       result.textContent = JSON.stringify(data, null, 2);
       if (xhr.status === 201) {
         prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
-        setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+        setTimeout(() => window.location.href = ui_prefix + data.video.id, 600);
       } else {
         prog.textContent = 'Upload failed.';
       }
@@ -110,9 +124,11 @@ function single_upload(file, title, nsfw, unlisted, comments_disabled, prog, res
 }
 
 async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = getApiPrefix(file.type);
+  const ui_prefix = getUiPrefix(file.type);
   const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
 
-  const init_res = await fetch('/videos/upload/init?content_type=' + encodeURIComponent(file.type), {
+  const init_res = await fetch(api + '/upload/init?content_type=' + encodeURIComponent(file.type), {
     method: 'POST'
   });
   if (!init_res.ok) {
@@ -128,7 +144,7 @@ async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, pr
 
     await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', '/videos/upload/' + upload_id + '/' + i);
+      xhr.open('PUT', api + '/upload/' + upload_id + '/' + i);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
 
       xhr.upload.onprogress = (e) => {
@@ -156,7 +172,7 @@ async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, pr
 
   prog.textContent = 'Processing…';
   const complete_res = await fetch(
-    '/videos/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled,
+    api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled,
     { method: 'POST' }
   );
   const data = await complete_res.json();
@@ -165,7 +181,7 @@ async function chunked_upload(file, title, nsfw, unlisted, comments_disabled, pr
 
   if (complete_res.status === 201) {
     prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
-    setTimeout(() => window.location.href = '/ui/videos/' + data.video.id, 600);
+    setTimeout(() => window.location.href = ui_prefix + data.video.id, 600);
   } else {
     throw new Error(data.message || data.error || 'Processing failed');
   }

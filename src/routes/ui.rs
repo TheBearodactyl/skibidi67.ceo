@@ -56,6 +56,7 @@ struct VideoCtx {
     id: String,
     title: String,
     content_type: String,
+    media_type: String,
     size_bytes: u64,
     size_human: String,
     sha256: String,
@@ -72,10 +73,20 @@ struct VideoCtx {
 
 impl VideoCtx {
     fn from_meta(v: &crate::models::VideoMeta) -> Self {
+        let media_type = if v.content_type.starts_with("audio/") {
+            "audio"
+        } else if v.content_type.starts_with("image/") {
+            "image"
+        } else {
+            "video"
+        }
+        .to_owned();
+
         Self {
             id: v.id.clone(),
             title: v.title.clone(),
             content_type: v.content_type.clone(),
+            media_type,
             size_bytes: v.size_bytes,
             size_human: format_size(v.size_bytes),
             sha256: v.sha256.clone(),
@@ -92,6 +103,14 @@ impl VideoCtx {
     }
 }
 
+fn media_url_prefix(media_type: &str) -> &'static str {
+    match media_type {
+        "audio" => "audio",
+        "image" => "images",
+        _ => "videos",
+    }
+}
+
 #[get("/")]
 pub fn index() -> Redirect {
     Redirect::to("/ui")
@@ -103,18 +122,29 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
 
-    let mut videos: Vec<VideoCtx> = state
+    let all: Vec<VideoCtx> = state
         .videos
         .iter()
         .filter(|e| !e.value().unlisted)
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+
+    let mut latest_videos: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "video").cloned().collect();
+    latest_videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    latest_videos.truncate(5);
+
+    let mut latest_audio: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "audio").cloned().collect();
+    latest_audio.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    latest_audio.truncate(5);
+
+    let mut latest_images: Vec<VideoCtx> = all.iter().filter(|v| v.media_type == "image").cloned().collect();
+    latest_images.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+    latest_images.truncate(5);
 
     let featured: Option<VideoCtx> = {
-        let sfw: Vec<_> = videos.iter().filter(|v| !v.nsfw).collect();
+        let sfw: Vec<_> = all.iter().filter(|v| !v.nsfw).collect();
         let pool = if sfw.is_empty() {
-            videos.iter().collect::<Vec<_>>()
+            all.iter().collect::<Vec<_>>()
         } else {
             sfw
         };
@@ -127,14 +157,95 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Temp
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
-            videos,
+            latest_videos,
+            latest_audio,
+            latest_images,
             featured,
         },
     )
 }
 
-#[get("/ui/videos/<id>")]
-pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+#[get("/ui/videos")]
+pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
+
+    let mut videos: Vec<VideoCtx> = state
+        .videos
+        .iter()
+        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("video/"))
+        .map(|e| VideoCtx::from_meta(e.value()))
+        .collect();
+    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+
+    Template::render(
+        "videos",
+        context! {
+            user: platform_user.map(UserCtx::from_platform),
+            is_admin,
+            has_github_oauth,
+            videos,
+        },
+    )
+}
+
+#[get("/ui/audio")]
+pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
+
+    let mut items: Vec<VideoCtx> = state
+        .videos
+        .iter()
+        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("audio/"))
+        .map(|e| VideoCtx::from_meta(e.value()))
+        .collect();
+    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+
+    Template::render(
+        "audio_listing",
+        context! {
+            user: platform_user.map(UserCtx::from_platform),
+            is_admin,
+            has_github_oauth,
+            items,
+        },
+    )
+}
+
+#[get("/ui/images")]
+pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
+    let has_github_oauth = state.github_oauth.is_some();
+
+    let mut items: Vec<VideoCtx> = state
+        .videos
+        .iter()
+        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("image/"))
+        .map(|e| VideoCtx::from_meta(e.value()))
+        .collect();
+    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at.clone()));
+
+    Template::render(
+        "image_listing",
+        context! {
+            user: platform_user.map(UserCtx::from_platform),
+            is_admin,
+            has_github_oauth,
+            items,
+        },
+    )
+}
+
+fn render_media_player(
+    id: &str,
+    template_name: &'static str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -148,12 +259,14 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
                 is_admin,
                 has_github_oauth,
                 title: "Not Found",
-                message: "This video does not exist or has been deleted.",
+                message: "This media does not exist or has been deleted.",
             },
         );
     }
 
-    let video_url = format!("https://skibidi67.ceo/videos/{}/file", id);
+    let video_ref = video.as_ref().unwrap();
+    let api_prefix = media_url_prefix(&video_ref.media_type);
+    let file_url = format!("https://skibidi67.ceo/{}/{}/file", api_prefix, id);
     let embed_url = format!("https://skibidi67.ceo/e/{}", id);
 
     let comments: Vec<CommentCtx> = state
@@ -175,17 +288,33 @@ pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>
         .unwrap_or_default();
 
     Template::render(
-        "player",
+        template_name,
         context! {
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
             video,
-            video_url,
+            file_url,
             embed_url,
+            api_prefix,
             comments,
         },
     )
+}
+
+#[get("/ui/videos/<id>")]
+pub fn player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    render_media_player(id, "player", user, state)
+}
+
+#[get("/ui/audio/<id>")]
+pub fn audio_player(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    render_media_player(id, "audio_player", user, state)
+}
+
+#[get("/ui/images/<id>")]
+pub fn image_viewer(id: &str, user: Option<AuthenticatedUser>, state: &State<AppState>) -> Template {
+    render_media_player(id, "image_viewer", user, state)
 }
 
 #[get("/e/<id>?<start>&<end>")]
@@ -197,13 +326,16 @@ pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppSt
             "message",
             context! {
                 title: "Not Found",
-                message: "This video does not exist or has been deleted.",
+                message: "This media does not exist or has been deleted.",
             },
         );
     }
 
-    let video_url = {
-        let base = format!("https://skibidi67.ceo/videos/{}/file", id);
+    let video_ref = video.as_ref().unwrap();
+    let api_prefix = media_url_prefix(&video_ref.media_type);
+
+    let file_url = {
+        let base = format!("https://skibidi67.ceo/{}/{}/file", api_prefix, id);
         match (start, end) {
             (None, None) => base,
             (s, e) => {
@@ -223,7 +355,7 @@ pub fn embed(id: &str, start: Option<u64>, end: Option<u64>, state: &State<AppSt
         "embed",
         context! {
             video,
-            video_url,
+            file_url,
         },
     )
 }
@@ -280,8 +412,7 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>) -> 
     )
 }
 
-#[rocket::post("/ui/videos/<id>/delete")]
-pub async fn ui_delete(
+async fn ui_delete_impl(
     id: &str,
     user: Option<AuthenticatedUser>,
     state: &State<AppState>,
@@ -294,7 +425,7 @@ pub async fn ui_delete(
         ("Error".to_owned(), "Admin access required.".to_owned())
     } else {
         match state.videos.remove(id) {
-            None => ("Error".to_owned(), "Video not found.".to_owned()),
+            None => ("Error".to_owned(), "Media not found.".to_owned()),
             Some((_, meta)) => {
                 state.delete_video_meta(&meta.id);
                 state.delete_comments(&meta.id);
@@ -328,4 +459,31 @@ pub async fn ui_delete(
             message,
         },
     )
+}
+
+#[rocket::post("/ui/videos/<id>/delete")]
+pub async fn ui_delete_video(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    ui_delete_impl(id, user, state).await
+}
+
+#[rocket::post("/ui/audio/<id>/delete")]
+pub async fn ui_delete_audio(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    ui_delete_impl(id, user, state).await
+}
+
+#[rocket::post("/ui/images/<id>/delete")]
+pub async fn ui_delete_image(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Template {
+    ui_delete_impl(id, user, state).await
 }
