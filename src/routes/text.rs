@@ -4,14 +4,13 @@ use {
         error::{AppError, AppResult},
         models::{Comment, VideoMeta},
         routes::media::{
-            self, CommentsDisabledPatch, CommentBody, MediaResponse, NsfwPatch, RangeHeader,
-            ALLOWED_TEXT_TYPES,
+            self, ALLOWED_TEXT_TYPES, CommentBody, CommentsDisabledPatch, MediaResponse, NsfwPatch,
+            RangeHeader,
         },
         state::AppState,
     },
     rocket::{
-        Data, State,
-        delete, get,
+        Data, State, delete, get,
         http::{ContentType, Status},
         patch, post, put,
         serde::json::Json,
@@ -66,13 +65,11 @@ pub async fn highlighted_text(
         .unwrap_or(".txt")
         .trim_start_matches('.');
 
-    use syntect::highlighting::ThemeSet;
-    use syntect::html::highlighted_html_for_string;
-    use syntect::parsing::SyntaxSet;
+    use syntect::{highlighting::ThemeSet, html::highlighted_html_for_string, parsing::SyntaxSet};
 
     let ss = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
-    let theme = &ts.themes["base16-ocean.dark"];
+    let theme = &ts.themes["base16-mocha.dark"];
 
     let syntax = ss
         .find_syntax_by_extension(ext)
@@ -106,7 +103,19 @@ pub async fn upload_text(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_TEXT_TYPES, filename).await
+    media::handle_upload(
+        title,
+        nsfw,
+        unlisted,
+        comments_disabled,
+        data,
+        content_type,
+        user,
+        state,
+        ALLOWED_TEXT_TYPES,
+        filename,
+    )
+    .await
 }
 
 #[post("/text/upload/init?<content_type>")]
@@ -129,7 +138,9 @@ pub async fn upload_chunk(
     media::handle_upload_chunk(upload_id, chunk_index, data, user, state).await
 }
 
-#[post("/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>")]
+#[post(
+    "/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
+)]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
@@ -140,7 +151,18 @@ pub async fn complete_upload(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_TEXT_TYPES, filename).await
+    media::handle_complete_upload(
+        upload_id,
+        title,
+        nsfw,
+        unlisted,
+        comments_disabled,
+        user,
+        state,
+        ALLOWED_TEXT_TYPES,
+        filename,
+    )
+    .await
 }
 
 #[post("/text/upload/init?<_content_type>", rank = 2)]
@@ -153,11 +175,7 @@ pub async fn init_upload_unauthorized(
     )
 }
 
-#[put(
-    "/text/upload/<_upload_id>/<_chunk_index>",
-    data = "<_data>",
-    rank = 2
-)]
+#[put("/text/upload/<_upload_id>/<_chunk_index>", data = "<_data>", rank = 2)]
 pub async fn upload_chunk_unauthorized(
     _upload_id: &str,
     _chunk_index: usize,
