@@ -52,25 +52,25 @@ const CHUNK_SIZE = 5 * 1024 * 1024;
 
 const KNOWN_MEDIA_PREFIXES = ['video/', 'audio/', 'image/'];
 
-function isKnownMediaType(type) {
-  return KNOWN_MEDIA_PREFIXES.some(function(p) { return type.startsWith(p); });
+function is_known_media_type(file_type) {
+  return KNOWN_MEDIA_PREFIXES.some(function(p) { return file_type.startsWith(p); });
 }
 
-function getApiPrefix(fileType) {
-  if (fileType.startsWith('audio/')) return '/audio';
-  if (fileType.startsWith('image/')) return '/images';
-  if (fileType === 'text/plain') return '/text';
+function get_api_prefix(file_type) {
+  if (file_type.startsWith('audio/')) return '/audio';
+  if (file_type.startsWith('image/')) return '/images';
+  if (file_type === 'text/plain') return '/text';
   return '/videos';
 }
 
-function getUiPrefix(fileType) {
-  if (fileType.startsWith('audio/')) return '/ui/audio/';
-  if (fileType.startsWith('image/')) return '/ui/images/';
-  if (fileType === 'text/plain') return '/ui/text/';
+function get_ui_prefix(file_type) {
+  if (file_type.startsWith('audio/')) return '/ui/audio/';
+  if (file_type.startsWith('image/')) return '/ui/images/';
+  if (file_type === 'text/plain') return '/ui/text/';
   return '/ui/videos/';
 }
 
-function detectTextFile(file) {
+function detect_text_file(file) {
   return new Promise(function(resolve) {
     var reader = new FileReader();
     reader.onload = function() { resolve(true); };
@@ -92,14 +92,14 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   if (!file) { alert('Please choose a file.'); return; }
 
-  var effectiveType = file.type;
+  var effective_type = file.type;
 
-  if (!isKnownMediaType(effectiveType)) {
+  if (!is_known_media_type(effective_type)) {
     prog.hidden = false;
     prog.textContent = 'Checking file content…';
-    var isText = await detectTextFile(file);
-    if (isText) {
-      effectiveType = 'text/plain';
+    var is_text = await detect_text_file(file);
+    if (is_text) {
+      effective_type = 'text/plain';
     } else {
       alert('Unsupported file type. The file must be a video, audio, image, or valid text (UTF-8) file.');
       return;
@@ -112,9 +112,9 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result);
+      await chunked_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result);
     } else {
-      await single_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result);
+      await single_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result);
     }
   } catch (err) {
     prog.textContent = 'Upload failed: ' + err.message;
@@ -123,13 +123,17 @@ document.getElementById('upload-form').addEventListener('submit', async function
   }
 });
 
-function single_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result) {
-  const api = getApiPrefix(effectiveType);
-  const ui_prefix = getUiPrefix(effectiveType);
+function single_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = get_api_prefix(effective_type);
+  const ui_prefix = get_ui_prefix(effective_type);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', api + '/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled);
-    xhr.setRequestHeader('Content-Type', effectiveType);
+    var upload_url = api + '/upload?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
+    if (effective_type === 'text/plain' && file.name) {
+      upload_url += '&filename=' + encodeURIComponent(file.name);
+    }
+    xhr.open('POST', upload_url);
+    xhr.setRequestHeader('Content-Type', effective_type);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable)
@@ -154,12 +158,12 @@ function single_upload(file, effectiveType, title, nsfw, unlisted, comments_disa
   });
 }
 
-async function chunked_upload(file, effectiveType, title, nsfw, unlisted, comments_disabled, prog, result) {
-  const api = getApiPrefix(effectiveType);
-  const ui_prefix = getUiPrefix(effectiveType);
+async function chunked_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result) {
+  const api = get_api_prefix(effective_type);
+  const ui_prefix = get_ui_prefix(effective_type);
   const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
 
-  const init_res = await fetch(api + '/upload/init?content_type=' + encodeURIComponent(effectiveType), {
+  const init_res = await fetch(api + '/upload/init?content_type=' + encodeURIComponent(effective_type), {
     method: 'POST'
   });
   if (!init_res.ok) {
@@ -202,10 +206,11 @@ async function chunked_upload(file, effectiveType, title, nsfw, unlisted, commen
   }
 
   prog.textContent = 'Processing…';
-  const complete_res = await fetch(
-    api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled,
-    { method: 'POST' }
-  );
+  var complete_url = api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
+  if (effective_type === 'text/plain' && file.name) {
+    complete_url += '&filename=' + encodeURIComponent(file.name);
+  }
+  const complete_res = await fetch(complete_url, { method: 'POST' });
   const data = await complete_res.json();
   result.hidden = false;
   result.textContent = JSON.stringify(data, null, 2);

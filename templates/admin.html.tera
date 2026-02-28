@@ -56,9 +56,9 @@
 <script>
 function api_prefix(id) {
   var row = document.getElementById('row-' + id);
-  var mt = row ? row.dataset.mediaType : 'video';
-  if (mt === 'audio') return '/audio';
-  if (mt === 'image') return '/images';
+  var media_type = row ? row.dataset.mediaType : 'video';
+  if (media_type === 'audio') return '/audio';
+  if (media_type === 'image') return '/images';
   return '/videos';
 }
 

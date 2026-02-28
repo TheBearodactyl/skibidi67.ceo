@@ -16,6 +16,7 @@ use {
         patch, post, put,
         serde::json::Json,
     },
+    std::path::Path,
 };
 
 #[get("/text")]
@@ -37,9 +38,61 @@ pub async fn stream_text(
     media::stream_file(id, None, None, state, range, false).await
 }
 
+#[get("/text/<id>/highlighted")]
+pub async fn highlighted_text(
+    id: &str,
+    state: &State<AppState>,
+) -> Result<(ContentType, String), AppError> {
+    let meta = state.videos.get(id).ok_or(AppError::VideoNotFound)?.clone();
+
+    let filename = if let Some(ref ref_id) = meta.references_id {
+        state
+            .videos
+            .get(ref_id)
+            .map(|v| v.filename.clone())
+            .unwrap_or_else(|| meta.filename.clone())
+    } else {
+        meta.filename.clone()
+    };
+
+    let file_path = Path::new(&state.upload_dir).join(&filename);
+    let source = rocket::tokio::fs::read_to_string(&file_path)
+        .await
+        .map_err(AppError::Io)?;
+
+    let ext = meta
+        .original_extension
+        .as_deref()
+        .unwrap_or(".txt")
+        .trim_start_matches('.');
+
+    use syntect::highlighting::ThemeSet;
+    use syntect::html::highlighted_html_for_string;
+    use syntect::parsing::SyntaxSet;
+
+    let ss = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+    let theme = &ts.themes["base16-ocean.dark"];
+
+    let syntax = ss
+        .find_syntax_by_extension(ext)
+        .unwrap_or_else(|| ss.find_syntax_plain_text());
+
+    let html = highlighted_html_for_string(&source, &ss, syntax, theme)
+        .unwrap_or_else(|_| format!("<pre>{}</pre>", html_escape(&source)));
+
+    Ok((ContentType::HTML, html))
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/text/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>",
+    "/text/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>",
     data = "<data>"
 )]
 pub async fn upload_text(
@@ -47,12 +100,13 @@ pub async fn upload_text(
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
+    filename: Option<&str>,
     data: Data<'_>,
     content_type: &ContentType,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_TEXT_TYPES).await
+    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_TEXT_TYPES, filename).await
 }
 
 #[post("/text/upload/init?<content_type>")]
@@ -75,17 +129,18 @@ pub async fn upload_chunk(
     media::handle_upload_chunk(upload_id, chunk_index, data, user, state).await
 }
 
-#[post("/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>")]
+#[post("/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>")]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
+    filename: Option<&str>,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_TEXT_TYPES).await
+    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_TEXT_TYPES, filename).await
 }
 
 #[post("/text/upload/init?<_content_type>", rank = 2)]
@@ -115,7 +170,7 @@ pub async fn upload_chunk_unauthorized(
 }
 
 #[post(
-    "/text/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    "/text/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>&<_filename>",
     rank = 2
 )]
 pub async fn complete_upload_unauthorized(
@@ -124,6 +179,7 @@ pub async fn complete_upload_unauthorized(
     _nsfw: Option<bool>,
     _unlisted: Option<bool>,
     _comments_disabled: Option<bool>,
+    _filename: Option<&str>,
 ) -> (Status, Json<serde_json::Value>) {
     (
         Status::Unauthorized,
@@ -132,7 +188,7 @@ pub async fn complete_upload_unauthorized(
 }
 
 #[post(
-    "/text/upload?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    "/text/upload?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>&<_filename>",
     data = "<_data>",
     rank = 2
 )]
@@ -141,6 +197,7 @@ pub async fn upload_text_unauthorized(
     _nsfw: Option<bool>,
     _unlisted: Option<bool>,
     _comments_disabled: Option<bool>,
+    _filename: Option<&str>,
     _data: Data<'_>,
 ) -> (Status, Json<serde_json::Value>) {
     (

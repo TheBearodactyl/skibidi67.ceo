@@ -157,6 +157,7 @@ pub fn run() -> Rocket<Build> {
                 routes::text::list_text,
                 routes::text::get_text,
                 routes::text::stream_text,
+                routes::text::highlighted_text,
                 routes::text::upload_text,
                 routes::text::upload_text_unauthorized,
                 routes::text::init_upload,

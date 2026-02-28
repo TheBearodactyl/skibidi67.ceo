@@ -18,6 +18,7 @@ rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.10.9"
+syntect = "5.3.0"
 thiserror = "2.0.18"
 tlsh2 = { version = "0.3", features = ["diff"] }
 tokio = { version = "1.49.0", features = ["full"] }

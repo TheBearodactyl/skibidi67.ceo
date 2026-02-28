@@ -97,6 +97,8 @@ pub struct VideoMeta {
     #[serde(default = "default_true")]
     pub comments_disabled: bool,
     pub references_id: Option<String>,
+    #[serde(default)]
+    pub original_extension: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

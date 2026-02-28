@@ -5,7 +5,7 @@
 {% block og_description %}View {{ video.title }} on {{ site_host }} — uploaded by {{ video.uploaded_by_name }}{% endblock %}
 
 {% block content %}
-<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
+<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}{% if video.original_extension %} <small style="color:var(--overlay1)">({{ video.original_extension }})</small>{% endif %}</h2>
 
 {% if video.references_id %}
 <p><em>This post shares a file with <a href="/ui/text/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
@@ -23,10 +23,10 @@
 {% if video.nsfw %}
 <p><strong>[NSFW]</strong> <span id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to view (18+ only)</a></span></p>
 <div id="nsfw-media" hidden>
-<pre id="text-content" style="white-space:pre-wrap; word-wrap:break-word; background:var(--mantle); padding:1rem; border-radius:4px; max-height:80vh; overflow:auto;">Loading…</pre>
+<div id="code-container" style="background:var(--mantle); padding:1rem; border-radius:4px; max-height:80vh; overflow:auto;">Loading…</div>
 </div>
 {% else %}
-<pre id="text-content" style="white-space:pre-wrap; word-wrap:break-word; background:var(--mantle); padding:1rem; border-radius:4px; max-height:80vh; overflow:auto;">Loading…</pre>
+<div id="code-container" style="background:var(--mantle); padding:1rem; border-radius:4px; max-height:80vh; overflow:auto;">Loading…</div>
 {% endif %}
 
 <dl>
@@ -78,17 +78,41 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+#code-container pre {
+  margin: 0;
+  padding: 0.5rem;
+  overflow-x: auto;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+  border-radius: 4px;
+}
+</style>
 <script>
 var API = '/text';
 
-fetch('/text/{{ video.id }}/file')
-  .then(function(r) { return r.text(); })
-  .then(function(t) {
-    var el = document.getElementById('text-content');
-    el.textContent = t;
+fetch('/text/{{ video.id }}/highlighted')
+  .then(function(r) {
+    if (!r.ok) throw new Error('highlight failed');
+    return r.text();
+  })
+  .then(function(html) {
+    document.getElementById('code-container').innerHTML = html;
   })
   .catch(function() {
-    document.getElementById('text-content').textContent = 'Failed to load file.';
+    fetch('/text/{{ video.id }}/file')
+      .then(function(r) { return r.text(); })
+      .then(function(t) {
+        var el = document.getElementById('code-container');
+        var pre = document.createElement('pre');
+        pre.textContent = t;
+        el.innerHTML = '';
+        el.appendChild(pre);
+      })
+      .catch(function() {
+        document.getElementById('code-container').textContent = 'Failed to load file.';
+      });
   });
 
 function reveal() {
@@ -124,10 +148,10 @@ async function toggle_comments(id, current) {
   else alert('Error: ' + (await res.json()).error);
 }
 
-async function delete_comment(mediaId, commentId) {
+async function delete_comment(media_id, comment_id) {
   if (!confirm('Delete this comment?')) return;
-  const res = await fetch(API + '/' + mediaId + '/comments/' + commentId, { method: 'DELETE' });
-  if (res.ok) document.getElementById('comment-' + commentId)?.remove();
+  const res = await fetch(API + '/' + media_id + '/comments/' + comment_id, { method: 'DELETE' });
+  if (res.ok) document.getElementById('comment-' + comment_id)?.remove();
   else alert('Error: ' + (await res.json()).error);
 }
 

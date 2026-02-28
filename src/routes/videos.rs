@@ -54,7 +54,7 @@ pub async fn upload_video(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_VIDEO_TYPES).await
+    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_VIDEO_TYPES, None).await
 }
 
 #[post("/videos/upload/init?<content_type>")]
@@ -87,7 +87,7 @@ pub async fn complete_upload(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_VIDEO_TYPES).await
+    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_VIDEO_TYPES, None).await
 }
 
 #[post("/videos/upload/init?<_content_type>", rank = 2)]

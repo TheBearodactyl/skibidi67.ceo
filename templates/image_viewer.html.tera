@@ -121,10 +121,10 @@ async function toggle_comments(id, current) {
   else alert('Error: ' + (await res.json()).error);
 }
 
-async function delete_comment(mediaId, commentId) {
+async function delete_comment(media_id, comment_id) {
   if (!confirm('Delete this comment?')) return;
-  const res = await fetch(API + '/' + mediaId + '/comments/' + commentId, { method: 'DELETE' });
-  if (res.ok) document.getElementById('comment-' + commentId)?.remove();
+  const res = await fetch(API + '/' + media_id + '/comments/' + comment_id, { method: 'DELETE' });
+  if (res.ok) document.getElementById('comment-' + comment_id)?.remove();
   else alert('Error: ' + (await res.json()).error);
 }
 

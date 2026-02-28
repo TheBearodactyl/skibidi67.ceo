@@ -376,6 +376,7 @@ pub async fn process_uploaded_file(
     is_comments_disabled: bool,
     user: &AuthenticatedUser,
     state: &State<AppState>,
+    original_filename: Option<&str>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     let size_bytes_initial = fs::metadata(&temp_path).await?.len();
 
@@ -400,7 +401,18 @@ pub async fn process_uploaded_file(
         .to_owned();
 
     let mut base_mime = base_mime_in.to_owned();
-    let mut ext = extension_for_mime(base_mime_in);
+    let original_ext = if is_text_mime(base_mime_in) {
+        original_filename
+            .and_then(|f| {
+                std::path::Path::new(f)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| format!(".{}", e))
+            })
+    } else {
+        None
+    };
+    let mut ext = original_ext.as_deref().unwrap_or_else(|| extension_for_mime(base_mime_in));
     let mut size_bytes = size_bytes_initial;
 
     if is_video_mime(base_mime_in) && base_mime != "video/mp4" {
@@ -507,6 +519,7 @@ pub async fn process_uploaded_file(
             unlisted: is_unlisted,
             comments_disabled: is_comments_disabled,
             references_id: Some(original_id.clone()),
+            original_extension: original_ext.clone(),
         };
 
         state.videos.insert(video_id.clone(), meta.clone());
@@ -545,6 +558,7 @@ pub async fn process_uploaded_file(
         unlisted: is_unlisted,
         comments_disabled: is_comments_disabled,
         references_id: None,
+        original_extension: original_ext,
     };
 
     state.persist_video(&meta);
@@ -577,6 +591,7 @@ pub async fn handle_upload(
     user: AuthenticatedUser,
     state: &State<AppState>,
     allowed_types: &[&str],
+    original_filename: Option<&str>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     let title = title.trim();
     if title.is_empty() || title.len() > 200 {
@@ -614,6 +629,7 @@ pub async fn handle_upload(
         is_comments_disabled,
         &user,
         state,
+        original_filename,
     )
     .await
 }
@@ -709,6 +725,7 @@ pub async fn handle_complete_upload(
     user: AuthenticatedUser,
     state: &State<AppState>,
     allowed_types: &[&str],
+    original_filename: Option<&str>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     let title = title.trim();
     if title.is_empty() || title.len() > 200 {
@@ -776,6 +793,7 @@ pub async fn handle_complete_upload(
         is_comments_disabled,
         &user,
         state,
+        original_filename,
     )
     .await
 }

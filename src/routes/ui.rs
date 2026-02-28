@@ -109,6 +109,7 @@ struct VideoCtx {
     unlisted: bool,
     comments_disabled: bool,
     references_id: Option<String>,
+    original_extension: Option<String>,
 }
 
 impl VideoCtx {
@@ -142,6 +143,7 @@ impl VideoCtx {
             unlisted: v.unlisted,
             comments_disabled: v.comments_disabled,
             references_id: v.references_id.clone(),
+            original_extension: v.original_extension.clone(),
         }
     }
 }
