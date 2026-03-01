@@ -10,6 +10,7 @@ RUN cargo build --release
 RUN rm src/main.rs
 
 COPY static ./static
+COPY synthemes ./synthemes
 COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
@@ -23,6 +24,7 @@ COPY --from=builder /app/target/release/skibidi67 .
 COPY Rocket.toml .
 COPY templates ./templates
 COPY static ./static
+COPY synthemes ./synthemes
 
 RUN mkdir -p uploads
 
