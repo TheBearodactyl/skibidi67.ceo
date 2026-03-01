@@ -15,8 +15,19 @@ use {
         patch, post, put,
         serde::json::Json,
     },
-    std::path::Path,
+    std::{io::Cursor, path::Path},
+    syntect::{
+        highlighting::{Theme, ThemeSet},
+        html::highlighted_html_for_string,
+        parsing::SyntaxSet,
+    },
 };
+
+const ROSE_PINE: &[u8] = include_bytes!("../../synthemes/rose-pine.tmTheme");
+
+fn load_theme(bytes: &'static [u8]) -> Theme {
+    ThemeSet::load_from_reader(&mut Cursor::new(bytes)).expect("couldn't load theme")
+}
 
 #[get("/text")]
 pub fn list_text(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
@@ -65,17 +76,14 @@ pub async fn highlighted_text(
         .unwrap_or(".txt")
         .trim_start_matches('.');
 
-    use syntect::{highlighting::ThemeSet, html::highlighted_html_for_string, parsing::SyntaxSet};
-
     let ss = SyntaxSet::load_defaults_newlines();
-    let ts = ThemeSet::load_defaults();
-    let theme = &ts.themes["base16-mocha.dark"];
+    let theme = load_theme(ROSE_PINE);
 
     let syntax = ss
         .find_syntax_by_extension(ext)
         .unwrap_or_else(|| ss.find_syntax_plain_text());
 
-    let html = highlighted_html_for_string(&source, &ss, syntax, theme)
+    let html = highlighted_html_for_string(&source, &ss, syntax, &theme)
         .unwrap_or_else(|_| format!("<pre>{}</pre>", html_escape(&source)));
 
     Ok((ContentType::HTML, html))
@@ -138,6 +146,7 @@ pub async fn upload_chunk(
     media::handle_upload_chunk(upload_id, chunk_index, data, user, state).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[post(
     "/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
 )]
