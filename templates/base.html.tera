@@ -168,7 +168,7 @@
   <button id="style-toggle" onclick="toggle_style()">Disable styling</button>
   {% if user %}
   <label id="remember-toggle" style="display:flex;align-items:center;gap:0.25rem;cursor:pointer;background:var(--surface1,#45475a);color:var(--text,#cdd6f4);border:1px solid var(--surface2,#585b70);padding:0.25rem 0.6rem;border-radius:4px;">
-    <input type="checkbox" id="remember-me-cb" onchange="toggle_remember_me(this.checked)"> Remember me
+    <input type="checkbox" id="remember-me-cb" onchange="toggle_remember_me(this.checked)"> Remember me (doesn't work yet, wip)
   </label>
   {% endif %}
 </div>
