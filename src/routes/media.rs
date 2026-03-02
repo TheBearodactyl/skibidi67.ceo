@@ -371,6 +371,7 @@ pub async fn process_uploaded_file(
     temp_path: std::path::PathBuf,
     base_mime_in: &str,
     title: &str,
+    source: &str,
     is_nsfw: bool,
     is_unlisted: bool,
     is_comments_disabled: bool,
@@ -567,6 +568,7 @@ pub async fn process_uploaded_file(
         let meta = VideoMeta {
             id: video_id.clone(),
             title: title.to_owned(),
+            source: source.to_string(),
             filename: original_filename,
             content_type: base_mime.to_owned(),
             size_bytes,
@@ -606,6 +608,7 @@ pub async fn process_uploaded_file(
     let meta = VideoMeta {
         id: video_id.clone(),
         title: title.to_owned(),
+        source: source.to_owned(),
         filename: final_filename,
         content_type: base_mime.to_owned(),
         size_bytes,
@@ -644,6 +647,7 @@ pub async fn process_uploaded_file(
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_upload(
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -658,6 +662,12 @@ pub async fn handle_upload(
     if title.is_empty() || title.len() > 200 {
         return Err(AppError::InvalidTitle);
     }
+
+    let source = if source.is_empty() {
+        "N/A"
+    } else {
+        source.trim()
+    };
 
     let mime_str = content_type.to_string();
     let base_mime = mime_str.split(';').next().unwrap_or("").trim();
@@ -685,6 +695,7 @@ pub async fn handle_upload(
         temp_path,
         base_mime,
         title,
+        source,
         is_nsfw,
         is_unlisted,
         is_comments_disabled,
@@ -781,6 +792,7 @@ pub async fn handle_upload_chunk(
 pub async fn handle_complete_upload(
     upload_id: &str,
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -850,6 +862,7 @@ pub async fn handle_complete_upload(
         temp_path,
         &session.content_type,
         title,
+        source,
         is_nsfw,
         is_unlisted,
         is_comments_disabled,

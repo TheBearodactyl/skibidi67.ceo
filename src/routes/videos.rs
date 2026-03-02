@@ -4,14 +4,13 @@ use {
         error::{AppError, AppResult},
         models::{Comment, VideoMeta},
         routes::media::{
-            self, CommentsDisabledPatch, CommentBody, MediaResponse, NsfwPatch, RangeHeader,
-            ALLOWED_VIDEO_TYPES,
+            self, ALLOWED_VIDEO_TYPES, CommentBody, CommentsDisabledPatch, MediaResponse,
+            NsfwPatch, RangeHeader,
         },
         state::AppState,
     },
     rocket::{
-        Data, State,
-        delete, get,
+        Data, State, delete, get,
         http::{ContentType, Status},
         patch, post, put,
         serde::json::Json,
@@ -46,11 +45,12 @@ pub async fn stream_video(
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/videos/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>",
+    "/videos/upload?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>",
     data = "<data>"
 )]
 pub async fn upload_video(
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -59,7 +59,20 @@ pub async fn upload_video(
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_upload(title, nsfw, unlisted, comments_disabled, data, content_type, user, state, ALLOWED_VIDEO_TYPES, None).await
+    media::handle_upload(
+        title,
+        source,
+        nsfw,
+        unlisted,
+        comments_disabled,
+        data,
+        content_type,
+        user,
+        state,
+        ALLOWED_VIDEO_TYPES,
+        None,
+    )
+    .await
 }
 
 #[post("/videos/upload/init?<content_type>")]
@@ -82,17 +95,32 @@ pub async fn upload_chunk(
     media::handle_upload_chunk(upload_id, chunk_index, data, user, state).await
 }
 
-#[post("/videos/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>")]
+#[post(
+    "/videos/upload/<upload_id>/complete?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>"
+)]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
     user: AuthenticatedUser,
     state: &State<AppState>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
-    media::handle_complete_upload(upload_id, title, nsfw, unlisted, comments_disabled, user, state, ALLOWED_VIDEO_TYPES, None).await
+    media::handle_complete_upload(
+        upload_id,
+        title,
+        source,
+        nsfw,
+        unlisted,
+        comments_disabled,
+        user,
+        state,
+        ALLOWED_VIDEO_TYPES,
+        None,
+    )
+    .await
 }
 
 #[post("/videos/upload/init?<_content_type>", rank = 2)]

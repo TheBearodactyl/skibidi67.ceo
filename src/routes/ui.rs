@@ -99,6 +99,7 @@ impl UserCtx {
 struct VideoCtx {
     id: String,
     title: String,
+    source: String,
     content_type: String,
     media_type: String,
     size_bytes: u64,
@@ -133,6 +134,7 @@ impl VideoCtx {
         Self {
             id: v.id.clone(),
             title: v.title.clone(),
+            source: v.source.clone(),
             content_type: v.content_type.clone(),
             media_type,
             size_bytes: v.size_bytes,

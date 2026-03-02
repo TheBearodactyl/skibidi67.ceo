@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-<h2>{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
+<h2>{{ video.source }}{{ video.title }}{% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
 
 {% if video.references_id %}
 <p><em>This post shares a file with <a href="/ui/images/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>

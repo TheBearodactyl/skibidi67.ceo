@@ -14,6 +14,10 @@
       <input id="title" type="text" required maxlength="200">
     </p>
     <p>
+      <label for="source">Source</label><br>
+      <input id="source" type="text" required maxlength="200">
+    </p>
+    <p>
       <label for="file">File (max 100 MB)</label><br>
       <input id="file" type="file" required>
     </p>

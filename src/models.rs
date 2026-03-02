@@ -80,6 +80,7 @@ pub struct Session {
 pub struct VideoMeta {
     pub id: String,
     pub title: String,
+    pub source: String,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: u64,

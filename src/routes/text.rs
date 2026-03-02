@@ -97,11 +97,12 @@ fn html_escape(s: &str) -> String {
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/text/upload?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>",
+    "/text/upload?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>&<filename>",
     data = "<data>"
 )]
 pub async fn upload_text(
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -113,6 +114,7 @@ pub async fn upload_text(
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     media::handle_upload(
         title,
+        source,
         nsfw,
         unlisted,
         comments_disabled,
@@ -148,11 +150,12 @@ pub async fn upload_chunk(
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/text/upload/<upload_id>/complete?<title>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
+    "/text/upload/<upload_id>/complete?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
 )]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
+    source: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -163,6 +166,7 @@ pub async fn complete_upload(
     media::handle_complete_upload(
         upload_id,
         title,
+        source,
         nsfw,
         unlisted,
         comments_disabled,
