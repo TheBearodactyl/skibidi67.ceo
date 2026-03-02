@@ -95,6 +95,14 @@ document.getElementById('upload-form').addEventListener('submit', async function
   const result = document.getElementById('result');
   const btn    = this.querySelector('button[type="submit"]');
 
+  var source_a = "";
+
+  if (source === "") {
+    source_a = "N/A"
+  } else {
+    source_a = source
+  }
+
   if (!file) { alert('Please choose a file.'); return; }
 
   var effective_type = file.type;
@@ -117,9 +125,9 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result);
+      await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     } else {
-      await single_upload(file, effective_type, title, nsfw, unlisted, comments_disabled, prog, result);
+      await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     }
   } catch (err) {
     prog.textContent = 'Upload failed: ' + err.message;
@@ -181,6 +189,8 @@ async function chunked_upload(file, effective_type, title, source, nsfw, unliste
     throw new Error(err.message || err.error || 'Init failed');
   }
   const { upload_id } = await init_res.json();
+
+
 
   for (let i = 0; i < total_chunks; i++) {
     const start = i * CHUNK_SIZE;
