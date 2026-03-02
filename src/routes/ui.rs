@@ -132,9 +132,9 @@ impl VideoCtx {
         .to_owned();
 
         let source = if let Some(s) = v.source.clone() {
-            s.clone()
+            format!("({})", s.clone())
         } else {
-            "N/A".to_string()
+            "".to_string()
         };
 
         Self {

@@ -6,7 +6,7 @@
   <title>{{ video.title }} — {{ site_host }}</title>
 
   <meta property="og:site_name" content="{{ site_host }}">
-  <meta property="og:title" content="{{ video.title }} ({{ video.source }})">
+  <meta property="og:title" content="{{ video.title }} {{ video.source }}">
   <meta property="og:description" content="uploaded by {{ video.uploaded_by_name }} on {{ site_host }}">
   <meta property="og:url" content="{{ base_url }}/ui/videos/{{ video.id }}">
 
