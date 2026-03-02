@@ -105,6 +105,9 @@ pub async fn callback(
     cookie.set_same_site(SameSite::Lax);
     cookie.set_secure(true);
     cookie.set_path("/");
+    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
+        cookie.set_max_age(rocket::time::Duration::days(30));
+    }
     cookies.add(cookie);
 
     Ok(Redirect::to("/ui"))
@@ -197,6 +200,9 @@ pub async fn github_callback(
     cookie.set_same_site(SameSite::Lax);
     cookie.set_secure(true);
     cookie.set_path("/");
+    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
+        cookie.set_max_age(rocket::time::Duration::days(30));
+    }
     cookies.add(cookie);
 
     Ok(Redirect::to("/ui"))
@@ -228,6 +234,25 @@ pub fn me_unauthenticated() -> (Status, Json<serde_json::Value>) {
         Status::Unauthorized,
         Json(serde_json::json!({ "error": "Not authenticated" })),
     )
+}
+
+#[get("/auth/refresh-cookie")]
+pub fn refresh_cookie(cookies: &CookieJar<'_>, app_state: &State<AppState>) -> Redirect {
+    if let Some(session_cookie) = cookies.get(SESSION_COOKIE) {
+        let token = session_cookie.value().to_owned();
+        if app_state.sessions.contains_key(&token) {
+            let mut cookie = Cookie::new(SESSION_COOKIE, token);
+            cookie.set_http_only(true);
+            cookie.set_same_site(SameSite::Lax);
+            cookie.set_secure(true);
+            cookie.set_path("/");
+            if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
+                cookie.set_max_age(rocket::time::Duration::days(30));
+            }
+            cookies.add(cookie);
+        }
+    }
+    Redirect::to("/ui")
 }
 
 fn urlencoded(s: &str) -> String {

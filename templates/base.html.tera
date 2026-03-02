@@ -33,10 +33,10 @@
   </script>
   {% endblock %}
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
-  <style>
+  <link id="gfonts-preconnect1" rel="preconnect" href="https://fonts.googleapis.com">
+  <link id="gfonts-preconnect2" rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link id="gfonts" href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+  <style id="main-style">
     :root {
       --base:    #1e1e2e;
       --mantle:  #181825;
@@ -153,8 +153,25 @@
     em { color: var(--subtext1); }
     strong { color: var(--peach); }
   </style>
+  <script>
+  (function(){
+    if(localStorage.getItem('no-style')){
+      document.getElementById('main-style').disabled=true;
+      document.getElementById('gfonts').disabled=true;
+    }
+  })();
+  </script>
 </head>
 <body>
+
+<div id="top-toggles" style="position:fixed;top:0.5rem;right:0.5rem;z-index:9999;display:flex;gap:0.5rem;font-family:sans-serif;font-size:0.8rem;">
+  <button id="style-toggle" onclick="toggle_style()">Disable styling</button>
+  {% if user %}
+  <label id="remember-toggle" style="display:flex;align-items:center;gap:0.25rem;cursor:pointer;background:var(--surface1,#45475a);color:var(--text,#cdd6f4);border:1px solid var(--surface2,#585b70);padding:0.25rem 0.6rem;border-radius:4px;">
+    <input type="checkbox" id="remember-me-cb" onchange="toggle_remember_me(this.checked)"> Remember me
+  </label>
+  {% endif %}
+</div>
 
 <header>
   <h1><a href="/ui">{{ site_host | default(value="skibidi67.ceo") }}</a></h1>
@@ -180,6 +197,47 @@
 </main>
 
 {% block scripts %}{% endblock %}
+
+<script>
+function toggle_style(){
+  var main_style=document.getElementById('main-style');
+  var google_fonts=document.getElementById('gfonts');
+  var toggle_btn=document.getElementById('style-toggle');
+  if(main_style.disabled){
+    main_style.disabled=false;
+    google_fonts.disabled=false;
+    localStorage.removeItem('no-style');
+    toggle_btn.textContent='Disable styling';
+  }else{
+    main_style.disabled=true;
+    google_fonts.disabled=true;
+    localStorage.setItem('no-style','1');
+    toggle_btn.textContent='Enable styling';
+  }
+}
+(function(){
+  if(localStorage.getItem('no-style')){
+    document.getElementById('style-toggle').textContent='Enable styling';
+  }
+})();
+
+function toggle_remember_me(is_checked){
+  if(is_checked){
+    document.cookie='remember_me=true;path=/;max-age=2592000;SameSite=Lax';
+    localStorage.setItem('remember-me','true');
+  }else{
+    document.cookie='remember_me=;path=/;max-age=0';
+    localStorage.removeItem('remember-me');
+  }
+  fetch('/auth/refresh-cookie',{credentials:'same-origin'}).then(function(){});
+}
+(function(){
+  var remember_cb=document.getElementById('remember-me-cb');
+  if(remember_cb && localStorage.getItem('remember-me')){
+    remember_cb.checked=true;
+  }
+})();
+</script>
 
 </body>
 </html>

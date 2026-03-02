@@ -67,7 +67,9 @@ pub struct AppState {
     pub admin_ids: HashMap<String, HashSet<u64>>,
     pub upload_dir: String,
     pub upload_sessions: DashMap<String, UploadSession>,
+    pub conversion_progress: DashMap<String, u8>,
     pub comments: DashMap<String, Vec<Comment>>,
+    pub daily_pick_queue: std::sync::RwLock<Vec<String>>,
 }
 
 impl AppState {
@@ -133,6 +135,14 @@ impl AppState {
             }
         }
 
+        let daily_pick_queue: Vec<String> = {
+            let path = Path::new(&upload_dir).join("daily_pick_queue.json");
+            match std::fs::read_to_string(&path) {
+                Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+                Err(_) => Vec::new(),
+            }
+        };
+
         println!("Loaded {} video(s) from disk.", videos.len());
 
         Self {
@@ -146,7 +156,9 @@ impl AppState {
             admin_ids,
             upload_dir,
             upload_sessions: DashMap::new(),
+            conversion_progress: DashMap::new(),
             comments,
+            daily_pick_queue: std::sync::RwLock::new(daily_pick_queue),
         }
     }
 
@@ -212,6 +224,19 @@ impl AppState {
                 "Warning: could not serialize comments for {}: {}",
                 video_id, e
             ),
+        }
+    }
+
+    pub fn persist_daily_queue(&self) {
+        let path = Path::new(&self.upload_dir).join("daily_pick_queue.json");
+        let queue = self.daily_pick_queue.read().unwrap();
+        match serde_json::to_string_pretty(&*queue) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!("Warning: could not write daily queue to {:?}: {}", path, e);
+                }
+            }
+            Err(e) => eprintln!("Warning: could not serialize daily queue: {}", e),
         }
     }
 

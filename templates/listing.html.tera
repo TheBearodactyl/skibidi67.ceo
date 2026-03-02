@@ -24,7 +24,7 @@
 
 {% if featured %}
 <div style="margin-bottom:2rem">
-  <p><strong>Random pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% elif featured.media_type == "text" %}text{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
+  <p><strong>Daily pick:</strong> <a href="/ui/{% if featured.media_type == "image" %}images{% elif featured.media_type == "audio" %}audio{% elif featured.media_type == "text" %}text{% else %}videos{% endif %}/{{ featured.id }}">{{ featured.title }}</a>{% if featured.nsfw %} [NSFW]{% endif %} — {{ featured.uploaded_by_name }}</p>
   {% if featured.media_type == "audio" %}
     {% if featured.nsfw %}
       {% if user %}

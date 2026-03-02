@@ -136,8 +136,13 @@ function single_upload(file, effective_type, title, nsfw, unlisted, comments_dis
     xhr.setRequestHeader('Content-Type', effective_type);
 
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable)
-        prog.textContent = 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%';
+      if (e.lengthComputable) {
+        var pct = Math.round(e.loaded / e.total * 100);
+        prog.textContent = 'Uploading… ' + pct + '%';
+        if (pct >= 100 && effective_type.startsWith('video/') && effective_type !== 'video/mp4') {
+          prog.textContent = 'Processing…';
+        }
+      }
     };
 
     xhr.onload = () => {
@@ -205,12 +210,27 @@ async function chunked_upload(file, effective_type, title, nsfw, unlisted, comme
     });
   }
 
-  prog.textContent = 'Processing…';
+  prog.textContent = 'Processing… 0%';
   var complete_url = api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
   if (effective_type === 'text/plain' && file.name) {
     complete_url += '&filename=' + encodeURIComponent(file.name);
   }
+
+  var progress_interval = null;
+  if (effective_type.startsWith('video/')) {
+    progress_interval = setInterval(async function() {
+      try {
+        var r = await fetch('/videos/upload/' + upload_id + '/progress');
+        var d = await r.json();
+        if (d.progress !== null) {
+          prog.textContent = 'Processing… ' + d.progress + '%';
+        }
+      } catch (_) {}
+    }, 500);
+  }
+
   const complete_res = await fetch(complete_url, { method: 'POST' });
+  if (progress_interval) clearInterval(progress_interval);
   const data = await complete_res.json();
   result.hidden = false;
   result.textContent = JSON.stringify(data, null, 2);

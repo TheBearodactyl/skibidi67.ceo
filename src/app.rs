@@ -85,6 +85,8 @@ pub fn run() -> Rocket<Build> {
                 routes::auth::logout,
                 routes::auth::me,
                 routes::auth::me_unauthenticated,
+                routes::auth::refresh_cookie,
+                routes::videos::conversion_progress,
                 routes::videos::list_videos,
                 routes::videos::get_video,
                 routes::videos::stream_video,
@@ -196,6 +198,8 @@ pub fn run() -> Rocket<Build> {
                 routes::ui::ui_delete_audio,
                 routes::ui::ui_delete_image,
                 routes::ui::ui_delete_text,
+                routes::ui::add_to_daily_queue,
+                routes::ui::remove_from_daily_queue,
             ],
         )
 }

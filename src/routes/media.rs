@@ -377,6 +377,7 @@ pub async fn process_uploaded_file(
     user: &AuthenticatedUser,
     state: &State<AppState>,
     original_filename: Option<&str>,
+    upload_id: Option<&str>,
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     let size_bytes_initial = fs::metadata(&temp_path).await?.len();
 
@@ -402,23 +403,53 @@ pub async fn process_uploaded_file(
 
     let mut base_mime = base_mime_in.to_owned();
     let original_ext = if is_text_mime(base_mime_in) {
-        original_filename
-            .and_then(|f| {
-                std::path::Path::new(f)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| format!(".{}", e))
-            })
+        original_filename.and_then(|f| {
+            std::path::Path::new(f)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| format!(".{}", e))
+        })
     } else {
         None
     };
-    let mut ext = original_ext.as_deref().unwrap_or_else(|| extension_for_mime(base_mime_in));
+    let mut ext = original_ext
+        .as_deref()
+        .unwrap_or_else(|| extension_for_mime(base_mime_in));
     let mut size_bytes = size_bytes_initial;
 
     if is_video_mime(base_mime_in) && base_mime != "video/mp4" {
         let converted_path = Path::new(&state.upload_dir).join(format!("{}.mp4", temp_id));
 
-        let status = tokio::process::Command::new("ffmpeg")
+        let duration_us: Option<u64> = {
+            let probe = tokio::process::Command::new("ffprobe")
+                .args([
+                    "-v",
+                    "quiet",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "csv=p=0",
+                    temp_path.to_str().unwrap(),
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .output()
+                .await
+                .ok();
+            probe.and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout);
+                s.trim()
+                    .parse::<f64>()
+                    .ok()
+                    .map(|d| (d * 1_000_000.0) as u64)
+            })
+        };
+
+        if let Some(uid) = upload_id {
+            state.conversion_progress.insert(uid.to_owned(), 0);
+        }
+
+        let mut child = tokio::process::Command::new("ffmpeg")
             .args([
                 "-y",
                 "-i",
@@ -437,13 +468,43 @@ pub async fn process_uploaded_file(
                 "192k",
                 "-movflags",
                 "+faststart",
+                "-progress",
+                "pipe:1",
                 converted_path.to_str().unwrap(),
             ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
             .map_err(|e| AppError::Internal(format!("ffmpeg launch failed: {e}")))?;
+
+        if let Some(stdout) = child.stdout.take() {
+            let progress_key = upload_id.map(|u| u.to_owned());
+            let state_progress = state.conversion_progress.clone();
+            let total_us = duration_us;
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let reader = tokio::io::BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(val) = line.strip_prefix("out_time_us=")
+                        && let (Some(key), Some(total)) = (&progress_key, total_us)
+                        && let Ok(current) = val.parse::<u64>()
+                    {
+                        let pct = ((current as f64 / total as f64) * 100.0).min(99.0) as u8;
+                        state_progress.insert(key.clone(), pct);
+                    }
+                }
+            });
+        }
+
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| AppError::Internal(format!("ffmpeg failed: {e}")))?;
+
+        if let Some(uid) = upload_id {
+            state.conversion_progress.remove(uid);
+        }
 
         if !status.success() {
             let _ = fs::remove_file(&temp_path).await;
@@ -630,6 +691,7 @@ pub async fn handle_upload(
         &user,
         state,
         original_filename,
+        None,
     )
     .await
 }
@@ -794,8 +856,17 @@ pub async fn handle_complete_upload(
         &user,
         state,
         original_filename,
+        Some(upload_id),
     )
     .await
+}
+
+pub fn get_conversion_progress(
+    upload_id: &str,
+    state: &State<AppState>,
+) -> Json<serde_json::Value> {
+    let progress = state.conversion_progress.get(upload_id).map(|v| *v);
+    Json(serde_json::json!({ "progress": progress }))
 }
 
 pub fn handle_list(state: &State<AppState>, mime_prefix: &str) -> Json<Vec<VideoMeta>> {

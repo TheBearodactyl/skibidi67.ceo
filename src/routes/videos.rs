@@ -18,6 +18,11 @@ use {
     },
 };
 
+#[get("/videos/upload/<upload_id>/progress")]
+pub fn conversion_progress(upload_id: &str, state: &State<AppState>) -> Json<serde_json::Value> {
+    media::get_conversion_progress(upload_id, state)
+}
+
 #[get("/videos")]
 pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
     media::handle_list(state, "video/")

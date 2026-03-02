@@ -1,9 +1,14 @@
 use {
     crate::{auth::AuthenticatedUser, models::PlatformUser, state::AppState},
-    rand::seq::IndexedRandom,
-    rocket::{State, get, http::ContentType, response::Redirect},
+    rocket::{
+        State, get,
+        http::{ContentType, Status},
+        response::Redirect,
+        serde::json::Json,
+    },
     rocket_dyn_templates::{Template, context},
-    serde::Serialize,
+    serde::{Deserialize, Serialize},
+    std::hash::{Hash, Hasher},
 };
 
 pub struct SiteInfo {
@@ -157,7 +162,6 @@ fn media_url_prefix(media_type: &str) -> &'static str {
     }
 }
 
-
 #[get("/favicon.ico")]
 pub fn favicon() -> (ContentType, &'static [u8]) {
     (
@@ -172,7 +176,11 @@ pub fn index() -> Redirect {
 }
 
 #[get("/ui")]
-pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn listing(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let show_nsfw_on_homepage: bool = std::env::var("SHOW_NSFW_ON_HOMEPAGE")
         .unwrap_or_default()
         .parse()
@@ -223,17 +231,39 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: S
             .collect()
     };
 
-    let featured: Option<VideoCtx> = if all.is_empty() {
-        videos
-            .iter()
-            .chain(audio.iter())
-            .chain(images.iter())
-            .chain(texts.iter())
-            .collect::<Vec<_>>()
-            .choose(&mut rand::rng())
-            .map(|v| (*v).clone())
-    } else {
-        all.choose(&mut rand::rng()).map(|v| (*v).clone())
+    let featured: Option<VideoCtx> = {
+        let queue_pick = {
+            let queue = state.daily_pick_queue.read().unwrap();
+            queue.iter().find_map(|id| {
+                state
+                    .videos
+                    .get(id.as_str())
+                    .map(|v| VideoCtx::from_meta(v.value()))
+            })
+        };
+        if queue_pick.is_some() {
+            queue_pick
+        } else {
+            let pool: Vec<&VideoCtx> = if all.is_empty() {
+                videos
+                    .iter()
+                    .chain(audio.iter())
+                    .chain(images.iter())
+                    .chain(texts.iter())
+                    .collect()
+            } else {
+                all
+            };
+            if pool.is_empty() {
+                None
+            } else {
+                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                today.hash(&mut hasher);
+                let idx = hasher.finish() as usize % pool.len();
+                Some(pool[idx].clone())
+            }
+        }
     };
 
     let latest_videos: Vec<VideoCtx> = videos.into_iter().take(5).collect();
@@ -259,7 +289,11 @@ pub fn listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: S
 }
 
 #[get("/ui/videos")]
-pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn video_listing(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -285,7 +319,11 @@ pub fn video_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, s
 }
 
 #[get("/ui/audio")]
-pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn audio_listing(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -311,7 +349,11 @@ pub fn audio_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, s
 }
 
 #[get("/ui/images")]
-pub fn image_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn image_listing(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -450,7 +492,11 @@ pub fn image_viewer(
 }
 
 #[get("/ui/text")]
-pub fn text_listing(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn text_listing(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -537,7 +583,11 @@ pub fn embed(
 }
 
 #[get("/ui/upload")]
-pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn upload_form(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -554,7 +604,11 @@ pub fn upload_form(user: Option<AuthenticatedUser>, state: &State<AppState>, sit
 }
 
 #[get("/ui/admin")]
-pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>, site: SiteInfo) -> Template {
+pub fn admin_panel(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    site: SiteInfo,
+) -> Template {
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -576,6 +630,19 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>, sit
         format_size(total_bytes)
     };
 
+    let daily_queue: Vec<VideoCtx> = {
+        let queue = state.daily_pick_queue.read().unwrap();
+        queue
+            .iter()
+            .filter_map(|id| {
+                state
+                    .videos
+                    .get(id.as_str())
+                    .map(|v| VideoCtx::from_meta(v.value()))
+            })
+            .collect()
+    };
+
     Template::render(
         "admin",
         context! {
@@ -586,6 +653,7 @@ pub fn admin_panel(user: Option<AuthenticatedUser>, state: &State<AppState>, sit
             videos,
             video_count: state.videos.len(),
             disk_human,
+            daily_queue,
         },
     )
 }
@@ -679,4 +747,45 @@ pub async fn ui_delete_text(
     site: SiteInfo,
 ) -> Template {
     ui_delete_impl(id, user, state, site).await
+}
+
+#[derive(Deserialize)]
+pub struct DailyQueueBody {
+    pub media_id: String,
+}
+
+#[rocket::post("/ui/admin/daily-queue", data = "<body>")]
+pub fn add_to_daily_queue(
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+    body: Json<DailyQueueBody>,
+) -> Status {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    if !platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id)) {
+        return Status::Forbidden;
+    }
+    let mut queue = state.daily_pick_queue.write().unwrap();
+    if !queue.contains(&body.media_id) {
+        queue.push(body.media_id.clone());
+    }
+    drop(queue);
+    state.persist_daily_queue();
+    Status::Ok
+}
+
+#[rocket::delete("/ui/admin/daily-queue/<id>")]
+pub fn remove_from_daily_queue(
+    id: &str,
+    user: Option<AuthenticatedUser>,
+    state: &State<AppState>,
+) -> Status {
+    let platform_user = user.as_ref().map(|u| &u.0);
+    if !platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id)) {
+        return Status::Forbidden;
+    }
+    let mut queue = state.daily_pick_queue.write().unwrap();
+    queue.retain(|item| item != id);
+    drop(queue);
+    state.persist_daily_queue();
+    Status::Ok
 }

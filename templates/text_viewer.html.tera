@@ -92,28 +92,34 @@
 <script>
 var API = '/text';
 
-fetch('/text/{{ video.id }}/highlighted')
-  .then(function(r) {
-    if (!r.ok) throw new Error('highlight failed');
-    return r.text();
-  })
-  .then(function(html) {
-    document.getElementById('code-container').innerHTML = html;
-  })
-  .catch(function() {
-    fetch('/text/{{ video.id }}/file')
-      .then(function(r) { return r.text(); })
-      .then(function(t) {
-        var el = document.getElementById('code-container');
-        var pre = document.createElement('pre');
-        pre.textContent = t;
-        el.innerHTML = '';
-        el.appendChild(pre);
-      })
-      .catch(function() {
-        document.getElementById('code-container').textContent = 'Failed to load file.';
-      });
-  });
+function load_raw_text(){
+  fetch('/text/{{ video.id }}/file')
+    .then(function(r) { return r.text(); })
+    .then(function(t) {
+      var el = document.getElementById('code-container');
+      var pre = document.createElement('pre');
+      pre.textContent = t;
+      el.innerHTML = '';
+      el.appendChild(pre);
+    })
+    .catch(function() {
+      document.getElementById('code-container').textContent = 'Failed to load file.';
+    });
+}
+
+if(localStorage.getItem('no-style')){
+  load_raw_text();
+}else{
+  fetch('/text/{{ video.id }}/highlighted')
+    .then(function(r) {
+      if (!r.ok) throw new Error('highlight failed');
+      return r.text();
+    })
+    .then(function(html) {
+      document.getElementById('code-container').innerHTML = html;
+    })
+    .catch(function() { load_raw_text(); });
+}
 
 function reveal() {
   if (!confirm('This content is marked NSFW. Are you 18 or older?')) return;
