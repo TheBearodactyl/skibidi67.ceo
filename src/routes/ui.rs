@@ -131,10 +131,16 @@ impl VideoCtx {
         }
         .to_owned();
 
+        let source = if let Some(s) = v.source.clone() {
+            s.clone()
+        } else {
+            "N/A".to_string()
+        };
+
         Self {
             id: v.id.clone(),
             title: v.title.clone(),
-            source: v.source.clone(),
+            source,
             content_type: v.content_type.clone(),
             media_type,
             size_bytes: v.size_bytes,

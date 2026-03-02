@@ -413,6 +413,13 @@ pub async fn process_uploaded_file(
     } else {
         None
     };
+
+    let source = if source.is_empty() {
+        "N/A".to_string()
+    } else {
+        source.to_string()
+    };
+
     let mut ext = original_ext
         .as_deref()
         .unwrap_or_else(|| extension_for_mime(base_mime_in));
@@ -568,7 +575,7 @@ pub async fn process_uploaded_file(
         let meta = VideoMeta {
             id: video_id.clone(),
             title: title.to_owned(),
-            source: source.to_string(),
+            source: Some(source),
             filename: original_filename,
             content_type: base_mime.to_owned(),
             size_bytes,
@@ -608,7 +615,7 @@ pub async fn process_uploaded_file(
     let meta = VideoMeta {
         id: video_id.clone(),
         title: title.to_owned(),
-        source: source.to_owned(),
+        source: Some(source.to_string()),
         filename: final_filename,
         content_type: base_mime.to_owned(),
         size_bytes,
