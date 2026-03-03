@@ -214,8 +214,11 @@ async function chunked_upload(file, effective_type, title, source, nsfw, unliste
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve();
         } else {
-          let msg = 'Chunk upload failed';
-          try { msg = JSON.parse(xhr.responseText).message || msg; } catch {}
+          let msg = 'Chunk upload failed (HTTP ' + xhr.status + ')';
+          try {
+            var body = JSON.parse(xhr.responseText);
+            msg = body.message || body.error || msg;
+          } catch {}
           reject(new Error(msg));
         }
       };

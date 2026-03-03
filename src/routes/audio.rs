@@ -141,12 +141,13 @@ pub async fn upload_chunk_unauthorized(
 }
 
 #[post(
-    "/audio/upload/<_upload_id>/complete?<_title>&<_nsfw>&<_unlisted>&<_comments_disabled>",
+    "/audio/upload/<_upload_id>/complete?<_title>&<_source>&<_nsfw>&<_unlisted>&<_comments_disabled>",
     rank = 2
 )]
 pub async fn complete_upload_unauthorized(
     _upload_id: &str,
     _title: Option<&str>,
+    _source: Option<&str>,
     _nsfw: Option<bool>,
     _unlisted: Option<bool>,
     _comments_disabled: Option<bool>,
