@@ -52,7 +52,7 @@
 {% block scripts %}
 {% if user %}
 <script>
-const CHUNK_SIZE = 2 * 1024 * 1024;
+const CHUNK_SIZE = 100 * 1024 * 1024;
 
 const KNOWN_MEDIA_PREFIXES = ['video/', 'audio/', 'image/'];
 
