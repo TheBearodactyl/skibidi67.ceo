@@ -67,7 +67,8 @@ impl<'r> rocket::request::FromRequest<'r> for RangeHeader {
 }
 
 pub struct MediaResponse {
-    pub data: Vec<u8>,
+    pub body: Box<dyn tokio::io::AsyncRead + Send + Unpin + 'static>,
+    pub body_len: u64,
     pub content_type: String,
     pub content_range: String,
     pub status: rocket::http::Status,
@@ -82,16 +83,14 @@ impl<'r> rocket::response::Responder<'r, 'static> for MediaResponse {
         builder
             .status(self.status)
             .raw_header("Content-Type", self.content_type)
-            .raw_header("Content-Length", self.data.len().to_string())
+            .raw_header("Content-Length", self.body_len.to_string())
             .raw_header("Accept-Ranges", "bytes");
 
         if !self.content_range.is_empty() {
             builder.raw_header("Content-Range", self.content_range);
         }
 
-        builder
-            .sized_body(self.data.len(), std::io::Cursor::new(self.data))
-            .ok()
+        builder.streamed_body(self.body).ok()
     }
 }
 
@@ -289,8 +288,10 @@ pub async fn stream_file(
         }
 
         let data = extract_segment(&file_path, start_ms, end_ms).await?;
+        let body_len = data.len() as u64;
         return Ok(MediaResponse {
-            data,
+            body: Box::new(std::io::Cursor::new(data)),
+            body_len,
             content_type: "video/mp4".to_owned(),
             content_range: String::new(),
             status: Status::Ok,
@@ -302,7 +303,8 @@ pub async fn stream_file(
 
     if file_size == 0 {
         return Ok(MediaResponse {
-            data: vec![],
+            body: Box::new(tokio::io::empty()),
+            body_len: 0,
             content_type: meta.content_type.clone(),
             content_range: String::new(),
             status: Status::Ok,
@@ -322,7 +324,8 @@ pub async fn stream_file(
 
             if rs > re {
                 return Ok(MediaResponse {
-                    data: vec![],
+                    body: Box::new(tokio::io::empty()),
+                    body_len: 0,
                     content_type: meta.content_type.clone(),
                     content_range: format!("bytes */{}", file_size),
                     status: Status::RangeNotSatisfiable,
@@ -336,11 +339,10 @@ pub async fn stream_file(
         (0, file_size - 1, false)
     };
 
-    let read_len = (range_end - range_start + 1) as usize;
-    let mut data = vec![0u8; read_len];
+    let read_len = range_end - range_start + 1;
 
     file.seek(SeekFrom::Start(range_start)).await?;
-    file.read_exact(&mut data).await.map_err(AppError::Io)?;
+    let limited = tokio::io::AsyncReadExt::take(file, read_len);
 
     let content_range = if partial {
         format!("bytes {}-{}/{}", range_start, range_end, file_size)
@@ -349,7 +351,8 @@ pub async fn stream_file(
     };
 
     Ok(MediaResponse {
-        data,
+        body: Box::new(limited),
+        body_len: read_len,
         content_type: meta.content_type.clone(),
         content_range,
         status: if partial {
@@ -540,17 +543,27 @@ pub async fn process_uploaded_file(
     let compute_tlsh = is_video_mime(&base_mime);
     let hash_result =
         task::spawn_blocking(move || -> Result<(String, Option<String>), AppError> {
-            let bytes = std::fs::read(&hash_path)?;
-            let digest = Sha256::digest(&bytes);
-            let sha256 = digest.encode_hex::<String>();
-
-            let tlsh_hex = if compute_tlsh {
-                TlshDefaultBuilder::build_from(&bytes).map(|t| t.hash().encode_hex::<String>())
+            if compute_tlsh {
+                let bytes = std::fs::read(&hash_path)?;
+                let sha256 = Sha256::digest(&bytes).encode_hex::<String>();
+                let tlsh_hex =
+                    TlshDefaultBuilder::build_from(&bytes).map(|t| t.hash().encode_hex::<String>());
+                Ok((sha256, tlsh_hex))
             } else {
-                None
-            };
-
-            Ok((sha256, tlsh_hex))
+                use std::io::Read;
+                let mut hasher = Sha256::new();
+                let mut file = std::fs::File::open(&hash_path)?;
+                let mut buf = [0u8; 65536];
+                loop {
+                    let n = file.read(&mut buf)?;
+                    if n == 0 {
+                        break;
+                    }
+                    sha2::Digest::update(&mut hasher, &buf[..n]);
+                }
+                let sha256 = hasher.finalize().encode_hex::<String>();
+                Ok((sha256, None))
+            }
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -863,11 +876,12 @@ pub async fn handle_complete_upload(
                 return Err(AppError::FileTooLarge);
             }
 
-            let chunk_data = fs::read(&chunk_path)
+            let mut chunk_file = fs::File::open(&chunk_path)
                 .await
-                .map_err(|_| AppError::Internal(format!("Failed to read chunk {}", i)))?;
-
-            outfile.write_all(&chunk_data).await?;
+                .map_err(|_| AppError::Internal(format!("Failed to open chunk {}", i)))?;
+            tokio::io::copy(&mut chunk_file, &mut outfile)
+                .await
+                .map_err(|_| AppError::Internal(format!("Failed to copy chunk {}", i)))?;
         }
         outfile.flush().await?;
     }
@@ -912,7 +926,7 @@ pub fn handle_list(state: &State<AppState>, mime_prefix: &str) -> Json<Vec<Video
         .map(|entry| entry.value().clone())
         .collect();
 
-    items.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    items.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
     Json(items)
 }
 

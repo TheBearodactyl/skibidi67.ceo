@@ -8,8 +8,28 @@ use {
     },
     rocket_dyn_templates::{Template, context},
     serde::{Deserialize, Serialize},
-    std::hash::{Hash, Hasher},
+    std::{
+        collections::HashMap,
+        hash::{Hash, Hasher},
+        sync::OnceLock,
+    },
 };
+
+static CACHED_BASE_URL: OnceLock<Option<(String, String)>> = OnceLock::new();
+
+fn cached_base_url() -> &'static Option<(String, String)> {
+    CACHED_BASE_URL.get_or_init(|| {
+        std::env::var("BASE_URL").ok().map(|url| {
+            let url = url.trim_end_matches('/').to_owned();
+            let site_host = url
+                .strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+                .unwrap_or(&url)
+                .to_owned();
+            (url, site_host)
+        })
+    })
+}
 
 pub struct SiteInfo {
     pub base_url: String,
@@ -23,16 +43,10 @@ impl<'r> rocket::request::FromRequest<'r> for SiteInfo {
     async fn from_request(
         req: &'r rocket::request::Request<'_>,
     ) -> rocket::request::Outcome<Self, Self::Error> {
-        if let Ok(url) = std::env::var("BASE_URL") {
-            let url = url.trim_end_matches('/').to_owned();
-            let site_host = url
-                .strip_prefix("https://")
-                .or_else(|| url.strip_prefix("http://"))
-                .unwrap_or(&url)
-                .to_owned();
+        if let Some((base_url, site_host)) = cached_base_url() {
             return rocket::request::Outcome::Success(SiteInfo {
-                base_url: url,
-                site_host,
+                base_url: base_url.clone(),
+                site_host: site_host.clone(),
             });
         }
 
@@ -182,6 +196,17 @@ fn media_url_prefix(media_type: &str) -> &'static str {
     }
 }
 
+static SHOW_NSFW_ON_HOMEPAGE: OnceLock<bool> = OnceLock::new();
+
+fn show_nsfw_on_homepage() -> bool {
+    *SHOW_NSFW_ON_HOMEPAGE.get_or_init(|| {
+        std::env::var("SHOW_NSFW_ON_HOMEPAGE")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(false)
+    })
+}
+
 #[get("/favicon.ico")]
 pub fn favicon() -> (ContentType, &'static [u8]) {
     (
@@ -201,10 +226,7 @@ pub fn listing(
     state: &State<AppState>,
     site: SiteInfo,
 ) -> Template {
-    let show_nsfw_on_homepage: bool = std::env::var("SHOW_NSFW_ON_HOMEPAGE")
-        .unwrap_or_default()
-        .parse()
-        .unwrap_or(false);
+    let show_nsfw_on_homepage = show_nsfw_on_homepage();
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
@@ -229,10 +251,10 @@ pub fn listing(
         }
     }
 
-    videos.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    audio.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    images.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
-    texts.sort_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    videos.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    audio.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    images.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
+    texts.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
 
     let all: Vec<&VideoCtx> = if show_nsfw_on_homepage {
         videos
@@ -453,15 +475,18 @@ fn render_media_player(
         .map(|c| c.value().clone())
         .unwrap_or_default();
 
+    let author_by_id: HashMap<&str, &str> = raw_comments
+        .iter()
+        .map(|c| (c.id.as_str(), c.author_name.as_str()))
+        .collect();
+
     let comments: Vec<CommentCtx> = raw_comments
         .iter()
         .map(|c| {
-            let parent_author = c.parent_id.as_ref().and_then(|pid| {
-                raw_comments
-                    .iter()
-                    .find(|p| p.id == *pid)
-                    .map(|p| p.author_name.clone())
-            });
+            let parent_author = c
+                .parent_id
+                .as_ref()
+                .and_then(|pid| author_by_id.get(pid.as_str()).map(|s| s.to_string()));
             CommentCtx {
                 id: c.id.clone(),
                 author_provider: c.author_provider.clone(),
@@ -538,7 +563,7 @@ pub fn text_listing(
         .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("text/"))
         .map(|e| VideoCtx::from_meta(e.value()))
         .collect();
-    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
+    items.sort_unstable_by_key(|v| std::cmp::Reverse(v.uploaded_at));
 
     Template::render(
         "text_listing",
@@ -643,23 +668,18 @@ pub fn admin_panel(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let mut videos: Vec<VideoCtx> = Vec::with_capacity(state.videos.len());
+    let mut total_bytes: u64 = 0;
 
-    let mut videos: Vec<VideoCtx> = state
-        .videos
-        .iter()
-        .map(|e| VideoCtx::from_meta(e.value()))
-        .collect();
-    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
-
-    let disk_human: String = {
-        let total_bytes: u64 = state
-            .videos
-            .iter()
-            .filter(|e| e.value().references_id.is_none())
-            .map(|e| e.value().size_bytes)
-            .sum();
-        format_size(total_bytes)
-    };
+    for e in state.videos.iter() {
+        let v = e.value();
+        if v.references_id.is_none() {
+            total_bytes += v.size_bytes;
+        }
+        videos.push(VideoCtx::from_meta(v));
+    }
+    videos.sort_unstable_by_key(|v| std::cmp::Reverse(v.uploaded_at));
+    let disk_human = format_size(total_bytes);
 
     let daily_queue: Vec<VideoCtx> = {
         let queue = state.daily_pick_queue.read().unwrap();
