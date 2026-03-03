@@ -68,17 +68,21 @@
       {% if user %}
       <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to watch (18+ only)</a></span></p>
       <div id="featured-media" hidden>
-      <video id="featured-v" controls style="max-width:100%">
+      <div style="max-width:1280px">
+      <video id="featured-v" controls style="width:100%">
         <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
       </video>
+      </div>
       </div>
       {% else %}
       <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to watch</a></p>
       {% endif %}
     {% else %}
-    <video controls style="max-width:100%">
+    <div style="max-width:1280px">
+    <video controls style="width:100%">
       <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
     </video>
+    </div>
     {% endif %}
   {% endif %}
 </div>

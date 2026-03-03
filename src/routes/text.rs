@@ -97,12 +97,13 @@ fn html_escape(s: &str) -> String {
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/text/upload?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>&<filename>",
+    "/text/upload?<title>&<source_name>&<source_link>&<nsfw>&<unlisted>&<comments_disabled>&<filename>",
     data = "<data>"
 )]
 pub async fn upload_text(
     title: &str,
-    source: &str,
+    source_name: Option<&str>,
+    source_link: Option<&str>,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -114,7 +115,8 @@ pub async fn upload_text(
 ) -> Result<(Status, Json<serde_json::Value>), AppError> {
     media::handle_upload(
         title,
-        source,
+        source_name.unwrap_or(""),
+        source_link.unwrap_or(""),
         nsfw,
         unlisted,
         comments_disabled,
@@ -150,12 +152,13 @@ pub async fn upload_chunk(
 
 #[allow(clippy::too_many_arguments)]
 #[post(
-    "/text/upload/<upload_id>/complete?<title>&<source>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
+    "/text/upload/<upload_id>/complete?<title>&<source_name>&<source_link>&<nsfw>&<unlisted>&<comments_disabled>&<filename>"
 )]
 pub async fn complete_upload(
     upload_id: &str,
     title: &str,
-    source: &str,
+    source_name: Option<&str>,
+    source_link: Option<&str>,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -166,7 +169,8 @@ pub async fn complete_upload(
     media::handle_complete_upload(
         upload_id,
         title,
-        source,
+        source_name.unwrap_or(""),
+        source_link.unwrap_or(""),
         nsfw,
         unlisted,
         comments_disabled,
@@ -201,13 +205,14 @@ pub async fn upload_chunk_unauthorized(
 }
 
 #[post(
-    "/text/upload/<_upload_id>/complete?<_title>&<_source>&<_nsfw>&<_unlisted>&<_comments_disabled>&<_filename>",
+    "/text/upload/<_upload_id>/complete?<_title>&<_source_name>&<_source_link>&<_nsfw>&<_unlisted>&<_comments_disabled>&<_filename>",
     rank = 2
 )]
 pub async fn complete_upload_unauthorized(
     _upload_id: &str,
     _title: Option<&str>,
-    _source: Option<&str>,
+    _source_name: Option<&str>,
+    _source_link: Option<&str>,
     _nsfw: Option<bool>,
     _unlisted: Option<bool>,
     _comments_disabled: Option<bool>,

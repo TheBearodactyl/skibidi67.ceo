@@ -24,13 +24,24 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
             .get(SESSION_COOKIE)
             .map(|c| c.value().to_owned());
 
-        match token {
-            None => Outcome::Forward(Status::Unauthorized),
-            Some(t) => match state.sessions.get(&t) {
-                None => Outcome::Forward(Status::Unauthorized),
-                Some(session) => Outcome::Success(AuthenticatedUser(session.user.clone())),
-            },
+        if let Some(t) = token
+            && let Some(session) = state.sessions.get(&t)
+        {
+            return Outcome::Success(AuthenticatedUser(session.user.clone()));
         }
+
+        #[cfg(debug_assertions)]
+        {
+            return Outcome::Success(AuthenticatedUser(PlatformUser {
+                provider: "debug".to_owned(),
+                id: 0,
+                username: "debug_user".to_owned(),
+                avatar_url: String::new(),
+            }));
+        }
+
+        #[cfg(not(debug_assertions))]
+        Outcome::Forward(Status::Unauthorized)
     }
 }
 
@@ -48,6 +59,12 @@ impl<'r> FromRequest<'r> for AdminUser {
         };
 
         let state = req.rocket().state::<AppState>().unwrap();
+
+        #[cfg(debug_assertions)]
+        if user.provider == "debug" {
+            return Outcome::Success(AdminUser(user));
+        }
+
         if state.is_admin(&user.provider, user.id) {
             Outcome::Success(AdminUser(user))
         } else {

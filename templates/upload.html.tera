@@ -14,8 +14,12 @@
       <input id="title" type="text" required maxlength="200">
     </p>
     <p>
-      <label for="source">Source</label><br>
-      <input id="source" type="text" required maxlength="200">
+      <label for="source-name">Source Name (optional)</label><br>
+      <input id="source-name" type="text" maxlength="200">
+    </p>
+    <p>
+      <label for="source-link">Source URL (optional)</label><br>
+      <input id="source-link" type="url" maxlength="500" placeholder="https://...">
     </p>
     <p>
       <label for="file">File (max 250 MB)</label><br>
@@ -86,7 +90,8 @@ function detect_text_file(file) {
 document.getElementById('upload-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const title  = document.getElementById('title').value.trim();
-  const source = document.getElementById('source').value.trim();
+  const source_name = document.getElementById('source-name').value.trim();
+  const source_link = document.getElementById('source-link').value.trim();
   const file   = document.getElementById('file').files[0];
   const nsfw   = document.getElementById('nsfw').checked;
   const unlisted = document.getElementById('unlisted').checked;
@@ -94,14 +99,6 @@ document.getElementById('upload-form').addEventListener('submit', async function
   const prog   = document.getElementById('progress');
   const result = document.getElementById('result');
   const btn    = this.querySelector('button[type="submit"]');
-
-  var source_a = "";
-
-  if (source === "") {
-    source_a = "N/A"
-  } else {
-    source_a = source
-  }
 
   if (!file) { alert('Please choose a file.'); return; }
 
@@ -125,9 +122,9 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
+      await chunked_upload(file, effective_type, title, source_name, source_link, nsfw, unlisted, comments_disabled, prog, result);
     } else {
-      await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
+      await single_upload(file, effective_type, title, source_name, source_link, nsfw, unlisted, comments_disabled, prog, result);
     }
   } catch (err) {
     prog.textContent = 'Upload failed: ' + err.message;
@@ -136,12 +133,12 @@ document.getElementById('upload-form').addEventListener('submit', async function
   }
 });
 
-function single_upload(file, effective_type, title, source, nsfw, unlisted, comments_disabled, prog, result) {
+function single_upload(file, effective_type, title, source_name, source_link, nsfw, unlisted, comments_disabled, prog, result) {
   const api = get_api_prefix(effective_type);
   const ui_prefix = get_ui_prefix(effective_type);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    var upload_url = api + '/upload?title=' + encodeURIComponent(title) + '&source=' + source + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
+    var upload_url = api + '/upload?title=' + encodeURIComponent(title) + '&source_name=' + encodeURIComponent(source_name) + '&source_link=' + encodeURIComponent(source_link) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
     if (effective_type === 'text/plain' && file.name) {
       upload_url += '&filename=' + encodeURIComponent(file.name);
     }
@@ -182,7 +179,7 @@ function single_upload(file, effective_type, title, source, nsfw, unlisted, comm
   });
 }
 
-async function chunked_upload(file, effective_type, title, source, nsfw, unlisted, comments_disabled, prog, result) {
+async function chunked_upload(file, effective_type, title, source_name, source_link, nsfw, unlisted, comments_disabled, prog, result) {
   const api = get_api_prefix(effective_type);
   const ui_prefix = get_ui_prefix(effective_type);
   const total_chunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -235,7 +232,7 @@ async function chunked_upload(file, effective_type, title, source, nsfw, unliste
   }
 
   prog.textContent = 'Processing… 0%';
-  var complete_url = api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&source=' + source + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
+  var complete_url = api + '/upload/' + upload_id + '/complete?title=' + encodeURIComponent(title) + '&source_name=' + encodeURIComponent(source_name) + '&source_link=' + encodeURIComponent(source_link) + '&nsfw=' + nsfw + '&unlisted=' + unlisted + '&comments_disabled=' + comments_disabled;
   if (effective_type === 'text/plain' && file.name) {
     complete_url += '&filename=' + encodeURIComponent(file.name);
   }

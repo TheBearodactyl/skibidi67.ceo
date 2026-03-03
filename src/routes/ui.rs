@@ -58,9 +58,11 @@ struct CommentCtx {
     author_name: String,
     text: String,
     created_at: String,
+    parent_id: Option<String>,
+    parent_author: Option<String>,
 }
 
-fn format_size(bytes: u64) -> String {
+pub(crate) fn format_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     for unit in UNITS {
@@ -131,10 +133,20 @@ impl VideoCtx {
         }
         .to_owned();
 
-        let source = if let Some(s) = v.source.clone() {
-            format!("({})", s.clone())
-        } else {
-            "".to_string()
+        let source = {
+            let name = v
+                .source_name
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .or_else(|| v.source.as_deref().filter(|s| !s.is_empty() && *s != "N/A"));
+            let link = v.source_link.as_deref().filter(|s| !s.is_empty());
+
+            match (name, link) {
+                (Some(n), Some(l)) => format!("(<a href=\"{}\">{}</a>)", l, n),
+                (Some(n), None) => format!("({})", n),
+                (None, Some(l)) => format!("(<a href=\"{}\">{}</a>)", l, l),
+                (None, None) => String::new(),
+            }
         };
 
         Self {
@@ -240,15 +252,44 @@ pub fn listing(
     };
 
     let featured: Option<VideoCtx> = {
-        let queue_pick = {
-            let queue = state.daily_pick_queue.read().unwrap();
-            queue.iter().find_map(|id| {
-                state
-                    .videos
-                    .get(id.as_str())
-                    .map(|v| VideoCtx::from_meta(v.value()))
-            })
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+        let current = {
+            let pick = state.current_daily_pick.read().unwrap();
+            pick.clone()
         };
+
+        let queue_pick = if let Some((date, media_id)) = current
+            && date == today
+        {
+            state
+                .videos
+                .get(media_id.as_str())
+                .map(|v| VideoCtx::from_meta(v.value()))
+        } else {
+            let mut queue = state.daily_pick_queue.write().unwrap();
+            let mut picked = None;
+            while !queue.is_empty() {
+                let id = queue.remove(0);
+                if let Some(v) = state.videos.get(id.as_str()) {
+                    picked = Some((id, VideoCtx::from_meta(v.value())));
+                    break;
+                }
+            }
+            drop(queue);
+
+            if let Some((media_id, ctx)) = picked {
+                *state.current_daily_pick.write().unwrap() = Some((today.clone(), media_id));
+                state.persist_daily_pick_current();
+                state.persist_daily_queue();
+                Some(ctx)
+            } else {
+                *state.current_daily_pick.write().unwrap() = None;
+                state.persist_daily_pick_current();
+                None
+            }
+        };
+
         if queue_pick.is_some() {
             queue_pick
         } else {
@@ -265,7 +306,6 @@ pub fn listing(
             if pool.is_empty() {
                 None
             } else {
-                let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 today.hash(&mut hasher);
                 let idx = hasher.finish() as usize % pool.len();
@@ -434,23 +474,33 @@ fn render_media_player(
     let file_url = format!("{}/{}/{}/file", base_url, api_prefix, id);
     let embed_url = format!("{}/e/{}", base_url, id);
 
-    let comments: Vec<CommentCtx> = state
+    let raw_comments: Vec<crate::models::Comment> = state
         .comments
         .get(id)
-        .map(|c| {
-            c.value()
-                .iter()
-                .map(|c| CommentCtx {
-                    id: c.id.clone(),
-                    author_provider: c.author_provider.clone(),
-                    author_id: c.author_id,
-                    author_name: c.author_name.clone(),
-                    text: c.text.clone(),
-                    created_at: c.created_at.format("%Y-%m-%d %H:%M UTC").to_string(),
-                })
-                .collect()
-        })
+        .map(|c| c.value().clone())
         .unwrap_or_default();
+
+    let comments: Vec<CommentCtx> = raw_comments
+        .iter()
+        .map(|c| {
+            let parent_author = c.parent_id.as_ref().and_then(|pid| {
+                raw_comments
+                    .iter()
+                    .find(|p| p.id == *pid)
+                    .map(|p| p.author_name.clone())
+            });
+            CommentCtx {
+                id: c.id.clone(),
+                author_provider: c.author_provider.clone(),
+                author_id: c.author_id,
+                author_name: c.author_name.clone(),
+                text: c.text.clone(),
+                created_at: c.created_at.format("%Y-%m-%d %H:%M UTC").to_string(),
+                parent_id: c.parent_id.clone(),
+                parent_author,
+            }
+        })
+        .collect();
 
     Template::render(
         template_name,

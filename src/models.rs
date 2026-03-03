@@ -82,6 +82,10 @@ pub struct VideoMeta {
     pub title: String,
     #[serde(default)]
     pub source: Option<String>,
+    #[serde(default)]
+    pub source_name: Option<String>,
+    #[serde(default)]
+    pub source_link: Option<String>,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: u64,
@@ -113,4 +117,6 @@ pub struct Comment {
     pub author_name: String,
     pub text: String,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub parent_id: Option<String>,
 }

@@ -103,6 +103,8 @@ pub struct NsfwPatch {
 #[derive(Deserialize)]
 pub struct CommentBody {
     pub text: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -371,7 +373,8 @@ pub async fn process_uploaded_file(
     temp_path: std::path::PathBuf,
     base_mime_in: &str,
     title: &str,
-    source: &str,
+    source_name: &str,
+    source_link: &str,
     is_nsfw: bool,
     is_unlisted: bool,
     is_comments_disabled: bool,
@@ -414,10 +417,15 @@ pub async fn process_uploaded_file(
         None
     };
 
-    let source = if source.is_empty() {
-        "N/A".to_string()
+    let source_name_opt = if source_name.is_empty() {
+        None
     } else {
-        source.to_string()
+        Some(source_name.to_string())
+    };
+    let source_link_opt = if source_link.is_empty() {
+        None
+    } else {
+        Some(source_link.to_string())
     };
 
     let mut ext = original_ext
@@ -575,7 +583,9 @@ pub async fn process_uploaded_file(
         let meta = VideoMeta {
             id: video_id.clone(),
             title: title.to_owned(),
-            source: Some(source),
+            source: None,
+            source_name: source_name_opt.clone(),
+            source_link: source_link_opt.clone(),
             filename: original_filename,
             content_type: base_mime.to_owned(),
             size_bytes,
@@ -615,7 +625,9 @@ pub async fn process_uploaded_file(
     let meta = VideoMeta {
         id: video_id.clone(),
         title: title.to_owned(),
-        source: Some(source.to_string()),
+        source: None,
+        source_name: source_name_opt,
+        source_link: source_link_opt,
         filename: final_filename,
         content_type: base_mime.to_owned(),
         size_bytes,
@@ -654,7 +666,8 @@ pub async fn process_uploaded_file(
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_upload(
     title: &str,
-    source: &str,
+    source_name: &str,
+    source_link: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -670,11 +683,8 @@ pub async fn handle_upload(
         return Err(AppError::InvalidTitle);
     }
 
-    let source = if source.is_empty() {
-        "N/A"
-    } else {
-        source.trim()
-    };
+    let source_name = source_name.trim();
+    let source_link = source_link.trim();
 
     let mime_str = content_type.to_string();
     let base_mime = mime_str.split(';').next().unwrap_or("").trim();
@@ -702,7 +712,8 @@ pub async fn handle_upload(
         temp_path,
         base_mime,
         title,
-        source,
+        source_name,
+        source_link,
         is_nsfw,
         is_unlisted,
         is_comments_disabled,
@@ -799,7 +810,8 @@ pub async fn handle_upload_chunk(
 pub async fn handle_complete_upload(
     upload_id: &str,
     title: &str,
-    source: &str,
+    source_name: &str,
+    source_link: &str,
     nsfw: Option<bool>,
     unlisted: Option<bool>,
     comments_disabled: Option<bool>,
@@ -869,7 +881,8 @@ pub async fn handle_complete_upload(
         temp_path,
         &session.content_type,
         title,
-        source,
+        source_name,
+        source_link,
         is_nsfw,
         is_unlisted,
         is_comments_disabled,
@@ -1002,6 +1015,7 @@ pub fn handle_add_comment(
         author_name: user.0.username.clone(),
         text: trimmed_text.to_owned(),
         created_at: chrono::Utc::now(),
+        parent_id: body.parent_id.clone(),
     };
 
     state

@@ -19,7 +19,7 @@
 {% endblock %}
 
 {% block content %}
-<h2>{{ video.title }} {{ video.source }} {% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
+<h2>{{ video.title }} {{ video.source | safe }} {% if video.nsfw %} [NSFW]{% endif %}{% if video.unlisted %} [unlisted]{% endif %}</h2>
 
 {% if video.references_id %}
 <p><em>This post shares a file with <a href="/ui/videos/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
@@ -34,17 +34,24 @@
 </p>
 {% endif %}
 
+
+<button id="toggle-size-btn" onclick="toggleOriginalSize()">View Original Size</button>
+
 {% if video.nsfw %}
 <p><strong>[NSFW]</strong> <span id="nsfw-gate"><a href="#" onclick="reveal(); return false;">Click to view (18+ only)</a></span></p>
 <div id="nsfw-media" hidden>
-<video id="v" controls>
+<div id="video-container" style="max-width:1280px">
+<video id="v" controls style="width:100%">
   <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
 </video>
 </div>
+</div>
 {% else %}
-<video controls>
+<div id="video-container" style="max-width:1280px">
+<video controls style="width:100%">
   <source src="/videos/{{ video.id }}/file" type="{{ video.content_type }}">
 </video>
+</div>
 {% endif %}
 
 <dl>
@@ -65,6 +72,11 @@
 
 {% if user and not video.comments_disabled %}
 <form id="comment-form" style="margin-bottom:1rem">
+  <input type="hidden" id="reply-parent-id" value="">
+  <div id="reply-indicator" hidden style="margin-bottom:0.5rem; color:var(--overlay1);">
+    Replying to <strong id="reply-target-name"></strong>
+    <button type="button" onclick="cancelReply()" style="font-size:0.8em; margin-left:0.5rem;">Cancel</button>
+  </div>
   <input id="comment-text" type="text" placeholder="Write a comment…" required maxlength="2000" style="width:60%">
   <button type="submit">Post</button>
 </form>
@@ -82,11 +94,15 @@
 
 <div id="comments-list">
 {% for c in comments %}
-  <div id="comment-{{ c.id }}" style="margin-bottom:0.75rem; padding:0.5rem; background:var(--mantle); border-radius:4px;">
+  <div id="comment-{{ c.id }}" style="margin-bottom:0.75rem; padding:0.5rem; background:var(--mantle); border-radius:4px;{% if c.parent_id %} margin-left:1.5rem;{% endif %}">
+    {% if c.parent_author %}<small style="color:var(--overlay1)">&#8627; replying to @{{ c.parent_author }}</small><br>{% endif %}
     <strong>{{ c.author_name }}</strong> <small style="color:var(--overlay1)">{{ c.created_at }}</small>
     {% if user %}{% if (c.author_id == user.id and c.author_provider == user.provider) or is_admin %}
     <button onclick="delete_comment('{{ video.id }}', '{{ c.id }}')" style="float:right; font-size:0.8em;">Delete</button>
     {% endif %}{% endif %}
+    {% if user and not video.comments_disabled %}
+    <button onclick="startReply('{{ c.id }}', '{{ c.author_name }}')" style="float:right; font-size:0.8em; margin-right:0.5rem;">Reply</button>
+    {% endif %}
     <p style="margin:0.25rem 0 0">{{ c.text }}</p>
   </div>
 {% endfor %}
@@ -97,6 +113,18 @@
 
 {% block scripts %}
 <script>
+function toggleOriginalSize() {
+  var container = document.getElementById('video-container');
+  var btn = document.getElementById('toggle-size-btn');
+  if (container.style.maxWidth === 'none') {
+    container.style.maxWidth = '1280px';
+    btn.textContent = 'View Original Size';
+  } else {
+    container.style.maxWidth = 'none';
+    btn.textContent = 'View Uniform Size';
+  }
+}
+
 function reveal() {
   if (!confirm('This content is marked NSFW. Are you 18 or older?')) return;
   document.getElementById('nsfw-gate').hidden = true;
@@ -137,16 +165,29 @@ async function delete_comment(video_id, comment_id) {
   else alert('Error: ' + (await res.json()).error);
 }
 
+function startReply(commentId, authorName) {
+  document.getElementById('reply-parent-id').value = commentId;
+  document.getElementById('reply-target-name').textContent = authorName;
+  document.getElementById('reply-indicator').hidden = false;
+  document.getElementById('comment-text').focus();
+}
+
+function cancelReply() {
+  document.getElementById('reply-parent-id').value = '';
+  document.getElementById('reply-indicator').hidden = true;
+}
+
 var form = document.getElementById('comment-form');
 if (form) {
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
     var text = document.getElementById('comment-text').value.trim();
     if (!text) return;
+    var parentId = document.getElementById('reply-parent-id').value || null;
     const res = await fetch('/videos/{{ video.id }}/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text }),
+      body: JSON.stringify({ text: text, parent_id: parentId }),
     });
     if (res.ok) window.location.reload();
     else alert('Error: ' + (await res.json()).error);

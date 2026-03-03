@@ -9,7 +9,7 @@ use {
     rocket_dyn_templates::Template,
 };
 
-fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
+pub(crate) fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
     std::env::var(env_var)
         .unwrap_or_default()
         .split(',')

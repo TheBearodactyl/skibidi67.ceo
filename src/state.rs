@@ -70,6 +70,7 @@ pub struct AppState {
     pub conversion_progress: DashMap<String, u8>,
     pub comments: DashMap<String, Vec<Comment>>,
     pub daily_pick_queue: std::sync::RwLock<Vec<String>>,
+    pub current_daily_pick: std::sync::RwLock<Option<(String, String)>>,
 }
 
 impl AppState {
@@ -143,6 +144,14 @@ impl AppState {
             }
         };
 
+        let current_daily_pick: Option<(String, String)> = {
+            let path = Path::new(&upload_dir).join("daily_pick_current.json");
+            match std::fs::read_to_string(&path) {
+                Ok(json) => serde_json::from_str(&json).unwrap_or(None),
+                Err(_) => None,
+            }
+        };
+
         println!("Loaded {} video(s) from disk.", videos.len());
 
         Self {
@@ -159,6 +168,7 @@ impl AppState {
             conversion_progress: DashMap::new(),
             comments,
             daily_pick_queue: std::sync::RwLock::new(daily_pick_queue),
+            current_daily_pick: std::sync::RwLock::new(current_daily_pick),
         }
     }
 
@@ -224,6 +234,22 @@ impl AppState {
                 "Warning: could not serialize comments for {}: {}",
                 video_id, e
             ),
+        }
+    }
+
+    pub fn persist_daily_pick_current(&self) {
+        let path = Path::new(&self.upload_dir).join("daily_pick_current.json");
+        let pick = self.current_daily_pick.read().unwrap();
+        match serde_json::to_string_pretty(&*pick) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    eprintln!(
+                        "Warning: could not write daily pick current to {:?}: {}",
+                        path, e
+                    );
+                }
+            }
+            Err(e) => eprintln!("Warning: could not serialize daily pick current: {}", e),
         }
     }
 
