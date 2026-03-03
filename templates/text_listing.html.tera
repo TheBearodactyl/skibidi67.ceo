@@ -6,21 +6,64 @@
 {% block content %}
 <h2>Text</h2>
 
-{% if items | length == 0 %}
-  <p>No text files yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</p>
-{% else %}
-  <ul>
-    {% for v in items %}
-    <li>
-      <a href="/ui/text/{{ v.id }}">{{ v.title }}</a>
-      {% if v.nsfw %}[NSFW]{% endif %}
-      {% if v.unlisted %}[unlisted]{% endif %}
-      {% if v.references_id %}[dedup]{% endif %}
-      — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}
-    </li>
-    {% endfor %}
-  </ul>
-{% endif %}
+<ul id="list-container">
+  <li id="list-loading" style="color:var(--subtext0);list-style:none">Loading…</li>
+</ul>
 
 <p><a href="/ui">← Back</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  fetch('/text')
+    .then(function (r) { return r.json(); })
+    .then(function (items) {
+      var container = document.getElementById('list-container');
+      container.innerHTML = '';
+      if (!items || items.length === 0) {
+        container.innerHTML = '<li style="list-style:none">No text files yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</li>';
+        return;
+      }
+      items
+        .filter(function (v) { return !v.unlisted; })
+        .sort(function (a, b) { return b.uploaded_at < a.uploaded_at ? -1 : 1; })
+        .forEach(function (v) {
+          var size = fmt_size(v.size_bytes);
+          var date = fmt_date(v.uploaded_at);
+          var tags = (v.nsfw ? ' [NSFW]' : '') + (v.references_id ? ' [dedup]' : '');
+          var li = document.createElement('li');
+          li.innerHTML = '<a href="/ui/text/' + v.id + '">' + esc(v.title) + '</a>'
+            + tags + ' — ' + esc(v.uploaded_by_name) + ', ' + date + ', ' + size;
+          container.appendChild(li);
+        });
+    })
+    .catch(function () {
+      document.getElementById('list-loading').textContent = 'Failed to load text files.';
+    });
+
+  function fmt_size(b) {
+    var units = ['B','KB','MB','GB','TB'], s = b;
+    for (var i = 0; i < units.length; i++) {
+      if (s < 1024) return (s % 1 < 0.05 ? Math.round(s) : s.toFixed(1)) + ' ' + units[i];
+      s /= 1024;
+    }
+    return s.toFixed(1) + ' PB';
+  }
+
+  function fmt_date(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return d.getUTCFullYear() + '-'
+      + String(d.getUTCMonth()+1).padStart(2,'0') + '-'
+      + String(d.getUTCDate()).padStart(2,'0') + ' '
+      + String(d.getUTCHours()).padStart(2,'0') + ':'
+      + String(d.getUTCMinutes()).padStart(2,'0') + ' UTC';
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+})();
+</script>
 {% endblock %}

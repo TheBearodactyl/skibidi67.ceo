@@ -346,14 +346,6 @@ pub fn video_listing(
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
 
-    let mut videos: Vec<VideoCtx> = state
-        .videos
-        .iter()
-        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("video/"))
-        .map(|e| VideoCtx::from_meta(e.value()))
-        .collect();
-    videos.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
-
     Template::render(
         "videos",
         context! {
@@ -361,7 +353,6 @@ pub fn video_listing(
             is_admin,
             has_github_oauth,
             site_host: site.site_host,
-            videos,
         },
     )
 }
@@ -376,14 +367,6 @@ pub fn audio_listing(
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
 
-    let mut items: Vec<VideoCtx> = state
-        .videos
-        .iter()
-        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("audio/"))
-        .map(|e| VideoCtx::from_meta(e.value()))
-        .collect();
-    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
-
     Template::render(
         "audio_listing",
         context! {
@@ -391,7 +374,6 @@ pub fn audio_listing(
             is_admin,
             has_github_oauth,
             site_host: site.site_host,
-            items,
         },
     )
 }
@@ -406,14 +388,6 @@ pub fn image_listing(
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
 
-    let mut items: Vec<VideoCtx> = state
-        .videos
-        .iter()
-        .filter(|e| !e.value().unlisted && e.value().content_type.starts_with("image/"))
-        .map(|e| VideoCtx::from_meta(e.value()))
-        .collect();
-    items.sort_by_key(|v| std::cmp::Reverse(v.uploaded_at));
-
     Template::render(
         "image_listing",
         context! {
@@ -421,7 +395,6 @@ pub fn image_listing(
             is_admin,
             has_github_oauth,
             site_host: site.site_host,
-            items,
         },
     )
 }
