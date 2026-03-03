@@ -691,7 +691,7 @@ pub async fn handle_upload(
     let temp_filename = format!("tmp_{}{}", temp_id, ext);
     let temp_path = Path::new(&state.upload_dir).join(&temp_filename);
 
-    let written = data.open(100.mebibytes()).into_file(&temp_path).await?;
+    let written = data.open(250.mebibytes()).into_file(&temp_path).await?;
 
     if !written.is_complete() {
         let _ = fs::remove_file(&temp_path).await;
@@ -845,7 +845,7 @@ pub async fn handle_complete_upload(
                 .map_err(|_| AppError::Internal(format!("Missing chunk {}", i)))?;
 
             total_size += chunk_meta.len();
-            if total_size > 100 * 1024 * 1024 {
+            if total_size > 250 * 1024 * 1024 {
                 let _ = fs::remove_file(&temp_path).await;
                 let _ = fs::remove_dir_all(&chunk_dir).await;
                 return Err(AppError::FileTooLarge);

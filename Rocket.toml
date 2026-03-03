@@ -4,8 +4,8 @@ port = 8090
 log_level = "normal"
 
 [default.limits]
-file = "100 MiB"
-data-form = "100 MiB"
-form = "100 MiB"
-bytes = "100 MiB"
+file = "250 MiB"
+data-form = "250 MiB"
+form = "250 MiB"
+bytes = "250 MiB"
 json = "1 MiB"
