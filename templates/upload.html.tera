@@ -52,7 +52,7 @@
 {% block scripts %}
 {% if user %}
 <script>
-const CHUNK_SIZE = 100 * 1024 * 1024;
+const CHUNK_SIZE = 5 * 1024 * 1024;
 
 const KNOWN_MEDIA_PREFIXES = ['video/', 'audio/', 'image/'];
 
@@ -125,8 +125,7 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
-      //await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
+      await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     } else {
       await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     }
@@ -160,14 +159,20 @@ function single_upload(file, effective_type, title, source, nsfw, unlisted, comm
     };
 
     xhr.onload = () => {
-      const data = JSON.parse(xhr.responseText);
-      result.hidden = false;
-      result.textContent = JSON.stringify(data, null, 2);
-      if (xhr.status === 201) {
+      var data;
+      try { data = JSON.parse(xhr.responseText); } catch (_) { data = null; }
+      if (data) {
+        result.hidden = false;
+        result.textContent = JSON.stringify(data, null, 2);
+      }
+      if (xhr.status === 201 && data) {
         prog.textContent = data.deduplicated ? 'Done! (file deduplicated)' : 'Done!';
         setTimeout(() => window.location.href = ui_prefix + data.video.id, 600);
       } else {
-        prog.textContent = 'Upload failed.';
+        var msg = 'Upload failed (HTTP ' + xhr.status + ')';
+        if (data) msg = data.message || data.error || msg;
+        reject(new Error(msg));
+        return;
       }
       resolve();
     };
