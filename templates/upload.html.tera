@@ -125,7 +125,8 @@ document.getElementById('upload-form').addEventListener('submit', async function
 
   try {
     if (file.size > CHUNK_SIZE) {
-      await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
+      await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
+      //await chunked_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     } else {
       await single_upload(file, effective_type, title, source_a, nsfw, unlisted, comments_disabled, prog, result);
     }
