@@ -191,9 +191,8 @@
 </header>
 
 <main>
+  <p>if you like {{ site_host | default(value="skibidi67.ceo") }}, consider sending me some clams over on my <a href="https://ko-fi.com/thebearodactyl" rel="noopener">ko-fi</a> :D</p>
   {% block content %}{% endblock %}
-
-  <p>consider sending me some clams over on my <a href="https://ko-fi.com/thebearodactyl" rel="noopener">ko-fi</a> :D</p>
 </main>
 
 {% block scripts %}{% endblock %}
