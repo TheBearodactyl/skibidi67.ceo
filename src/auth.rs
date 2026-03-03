@@ -25,9 +25,9 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
             .map(|c| c.value().to_owned());
 
         match token {
-            None => Outcome::Error((Status::Unauthorized, ())),
+            None => Outcome::Forward(Status::Unauthorized),
             Some(t) => match state.sessions.get(&t) {
-                None => Outcome::Error((Status::Unauthorized, ())),
+                None => Outcome::Forward(Status::Unauthorized),
                 Some(session) => Outcome::Success(AuthenticatedUser(session.user.clone())),
             },
         }
