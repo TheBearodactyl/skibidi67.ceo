@@ -111,6 +111,16 @@ pub struct CommentsDisabledPatch {
     pub comments_disabled: bool,
 }
 
+#[derive(Deserialize)]
+pub struct MetaPatch {
+    pub title: Option<String>,
+    pub source_name: Option<String>,
+    pub source_link: Option<String>,
+    pub nsfw: Option<bool>,
+    pub unlisted: Option<bool>,
+    pub comments_disabled: Option<bool>,
+}
+
 pub fn is_video_mime(mime: &str) -> bool {
     mime.starts_with("video/")
 }
@@ -1092,5 +1102,48 @@ pub fn handle_patch_comments_disabled(
         "message": "Comments disabled flag updated",
         "id": id,
         "comments_disabled": body.comments_disabled,
+    })))
+}
+
+pub fn handle_patch_meta(
+    id: &str,
+    body: Json<MetaPatch>,
+    user: AuthenticatedUser,
+    state: &State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let mut meta = state.videos.get_mut(id).ok_or(AppError::VideoNotFound)?;
+    let is_admin = state.is_admin(&user.0.provider, user.0.id);
+    let is_owner = meta.uploaded_by_id == user.0.id && meta.uploaded_by_provider == user.0.provider;
+    if !is_owner && !is_admin {
+        return Err(AppError::Forbidden);
+    }
+    if let Some(ref title) = body.title {
+        let trimmed = title.trim();
+        if trimmed.is_empty() || trimmed.len() > 200 {
+            return Err(AppError::InvalidTitle);
+        }
+        meta.title = trimmed.to_owned();
+    }
+    if let Some(ref source_name) = body.source_name {
+        meta.source_name = Some(source_name.clone());
+    }
+    if let Some(ref source_link) = body.source_link {
+        meta.source_link = Some(source_link.clone());
+    }
+    if let Some(nsfw) = body.nsfw {
+        meta.nsfw = nsfw;
+    }
+    if let Some(unlisted) = body.unlisted {
+        meta.unlisted = unlisted;
+    }
+    if let Some(comments_disabled) = body.comments_disabled {
+        meta.comments_disabled = comments_disabled;
+    }
+    let updated = meta.clone();
+    drop(meta);
+    state.persist_video(&updated);
+    Ok(Json(serde_json::json!({
+        "message": "Post updated",
+        "id": id,
     })))
 }

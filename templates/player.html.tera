@@ -25,13 +25,26 @@
 <p><em>This post shares a file with <a href="/ui/videos/{{ video.references_id }}">an earlier upload</a> (deduplicated).</em></p>
 {% endif %}
 
-{% if is_admin %}
+{% if is_owner or is_admin %}
 <p>
+  {% if is_admin %}
   <button onclick="delete_video('{{ video.id }}')">Delete</button>
+  {% endif %}
   <button onclick="toggle_nsfw('{{ video.id }}', {{ video.nsfw }})">
     {% if video.nsfw %}Mark as SFW{% else %}Mark as NSFW{% endif %}
   </button>
+  <button onclick="document.getElementById('edit-form').hidden = !document.getElementById('edit-form').hidden">Edit</button>
 </p>
+<div id="edit-form" hidden style="margin-bottom:1rem; padding:1rem; background:var(--mantle); border-radius:4px;">
+  <h3>Edit Post</h3>
+  <label>Title<br><input id="edit-title" type="text" value="{{ video.title }}" maxlength="200" style="width:60%"></label><br>
+  <label>Source Name<br><input id="edit-source-name" type="text" value="{{ video.source_name }}" style="width:60%"></label><br>
+  <label>Source Link<br><input id="edit-source-link" type="url" value="{{ video.source_link }}" style="width:60%"></label><br>
+  <label><input id="edit-nsfw" type="checkbox" {% if video.nsfw %}checked{% endif %}> NSFW</label><br>
+  <label><input id="edit-unlisted" type="checkbox" {% if video.unlisted %}checked{% endif %}> Unlisted</label><br>
+  <label><input id="edit-comments-disabled" type="checkbox" {% if video.comments_disabled %}checked{% endif %}> Comments Disabled</label><br>
+  <button onclick="edit_meta('{{ video.id }}')" style="margin-top:0.5rem">Save</button>
+</div>
 {% endif %}
 
 
@@ -143,6 +156,24 @@ async function toggle_nsfw(id, current) {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ nsfw: !current }),
+  });
+  if (res.ok) window.location.reload();
+  else alert('Error: ' + (await res.json()).error);
+}
+
+async function edit_meta(id) {
+  var body = {
+    title: document.getElementById('edit-title').value,
+    source_name: document.getElementById('edit-source-name').value,
+    source_link: document.getElementById('edit-source-link').value,
+    nsfw: document.getElementById('edit-nsfw').checked,
+    unlisted: document.getElementById('edit-unlisted').checked,
+    comments_disabled: document.getElementById('edit-comments-disabled').checked,
+  };
+  const res = await fetch('/videos/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
   if (res.ok) window.location.reload();
   else alert('Error: ' + (await res.json()).error);

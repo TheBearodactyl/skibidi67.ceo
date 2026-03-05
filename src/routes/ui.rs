@@ -116,6 +116,8 @@ struct VideoCtx {
     id: String,
     title: String,
     source: String,
+    source_name: String,
+    source_link: String,
     content_type: String,
     media_type: String,
     size_bytes: u64,
@@ -167,6 +169,8 @@ impl VideoCtx {
             id: v.id.clone(),
             title: v.title.clone(),
             source,
+            source_name: v.source_name.clone().unwrap_or_default(),
+            source_link: v.source_link.clone().unwrap_or_default(),
             content_type: v.content_type.clone(),
             media_type,
             size_bytes: v.size_bytes,
@@ -465,6 +469,9 @@ fn render_media_player(
         );
     }
 
+    let is_owner = platform_user.is_some_and(|u| {
+        u.id == video.uploaded_by_id && u.provider == video.uploaded_by_provider
+    });
     let api_prefix = media_url_prefix(&video.media_type);
     let file_url = format!("{}/{}/{}/file", base_url, api_prefix, id);
     let embed_url = format!("{}/e/{}", base_url, id);
@@ -505,6 +512,7 @@ fn render_media_player(
         context! {
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
+            is_owner,
             has_github_oauth,
             site_host,
             base_url,

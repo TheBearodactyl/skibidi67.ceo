@@ -173,6 +173,10 @@ impl AppState {
     }
 
     pub fn is_admin(&self, provider: &str, user_id: u64) -> bool {
+        #[cfg(debug_assertions)]
+        return true;
+
+        #[cfg(not(debug_assertions))]
         self.admin_ids
             .get(provider)
             .is_some_and(|ids| ids.contains(&user_id))

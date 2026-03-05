@@ -4,7 +4,7 @@ use {
         error::{AppError, AppResult},
         models::{Comment, VideoMeta},
         routes::media::{
-            self, ALLOWED_IMAGE_TYPES, CommentBody, CommentsDisabledPatch, MediaResponse,
+            self, ALLOWED_IMAGE_TYPES, CommentBody, CommentsDisabledPatch, MediaResponse, MetaPatch,
             NsfwPatch, RangeHeader,
         },
         state::AppState,
@@ -298,6 +298,27 @@ pub fn patch_comments_disabled(
 pub fn patch_comments_disabled_unauthorized(
     _id: &str,
     _body: Json<CommentsDisabledPatch>,
+) -> (Status, Json<serde_json::Value>) {
+    (
+        Status::Unauthorized,
+        Json(serde_json::json!({ "error": "Authentication required" })),
+    )
+}
+
+#[patch("/images/<id>", format = "json", data = "<body>")]
+pub fn patch_meta(
+    id: &str,
+    body: Json<MetaPatch>,
+    user: AuthenticatedUser,
+    state: &State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    media::handle_patch_meta(id, body, user, state)
+}
+
+#[patch("/images/<_id>", format = "json", data = "<_body>", rank = 2)]
+pub fn patch_meta_unauthorized(
+    _id: &str,
+    _body: Json<MetaPatch>,
 ) -> (Status, Json<serde_json::Value>) {
     (
         Status::Unauthorized,
