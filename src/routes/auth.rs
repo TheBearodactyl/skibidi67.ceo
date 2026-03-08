@@ -3,7 +3,8 @@ use {
         auth::{AuthenticatedUser, SESSION_COOKIE},
         error::AppError,
         models::{
-            GithubTokenResponse, GithubUser, OsuTokenResponse, OsuUser, PlatformUser, Session,
+            DiscordTokenResponse, DiscordUser, GithubTokenResponse, GithubUser, OsuTokenResponse,
+            OsuUser, PlatformUser, Session,
         },
         state::AppState,
     },
@@ -25,6 +26,10 @@ const OSU_ME_URL: &str = "https://osu.ppy.sh/api/v2/me";
 const GITHUB_AUTHORIZE_URL: &str = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL: &str = "https://api.github.com/user";
+
+const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/oauth2/authorize";
+const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
+const DISCORD_USER_URL: &str = "https://discord.com/api/users/@me";
 
 #[get("/auth/login")]
 pub fn login(state: &State<AppState>) -> Redirect {
@@ -190,6 +195,102 @@ pub async fn github_callback(
         user: PlatformUser::from_github(&gh_user),
         access_token: token_res.access_token,
         refresh_token: None,
+        created_at: chrono::Utc::now(),
+    };
+
+    app_state.sessions.insert(session_token.clone(), session);
+
+    let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
+    cookie.set_http_only(true);
+    cookie.set_same_site(SameSite::Lax);
+    cookie.set_secure(true);
+    cookie.set_path("/");
+    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
+        cookie.set_max_age(rocket::time::Duration::days(30));
+    }
+    cookies.add(cookie);
+
+    Ok(Redirect::to("/ui"))
+}
+
+#[get("/auth/discord/login")]
+pub fn discord_login(state: &State<AppState>) -> Result<Redirect, AppError> {
+    let dc = state
+        .discord_oauth
+        .as_ref()
+        .ok_or(AppError::Internal("Discord OAuth not configured".to_owned()))?;
+
+    if state.pending_states.len() > 10_000 {
+        state.pending_states.clear();
+    }
+
+    let csrf_state = Uuid::new_v4().to_string();
+    state.pending_states.insert(csrf_state.clone(), ());
+
+    let url = format!(
+        "{}?client_id={}&redirect_uri={}&response_type=code&scope=identify&state={}",
+        DISCORD_AUTHORIZE_URL,
+        urlencoded(&dc.client_id),
+        urlencoded(&dc.redirect_uri),
+        urlencoded(&csrf_state),
+    );
+
+    Ok(Redirect::to(url))
+}
+
+#[get("/auth/discord/callback?<code>&<state>")]
+pub async fn discord_callback(
+    code: &str,
+    state: &str,
+    app_state: &State<AppState>,
+    cookies: &CookieJar<'_>,
+) -> Result<Redirect, AppError> {
+    if app_state.pending_states.remove(state).is_none() {
+        return Err(AppError::OAuthStateMismatch);
+    }
+
+    let dc = app_state
+        .discord_oauth
+        .as_ref()
+        .ok_or(AppError::Internal("Discord OAuth not configured".to_owned()))?;
+
+    let client = reqwest::Client::new();
+
+    let form_body = format!(
+        "client_id={}&client_secret={}&code={}&grant_type=authorization_code&redirect_uri={}",
+        urlencoded(&dc.client_id),
+        urlencoded(&dc.client_secret),
+        urlencoded(code),
+        urlencoded(&dc.redirect_uri),
+    );
+
+    let token_res: DiscordTokenResponse = client
+        .post(DISCORD_TOKEN_URL)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(form_body)
+        .send()
+        .await
+        .map_err(AppError::Reqwest)?
+        .json()
+        .await
+        .map_err(|e| AppError::OAuthTokenExchange(e.to_string()))?;
+
+    let dc_user: DiscordUser = client
+        .get(DISCORD_USER_URL)
+        .bearer_auth(&token_res.access_token)
+        .send()
+        .await
+        .map_err(AppError::Reqwest)?
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to fetch Discord user: {}", e)))?;
+
+    let session_token = Uuid::new_v4().to_string();
+
+    let session = Session {
+        user: PlatformUser::from_discord(&dc_user),
+        access_token: token_res.access_token,
+        refresh_token: token_res.refresh_token,
         created_at: chrono::Utc::now(),
     };
 

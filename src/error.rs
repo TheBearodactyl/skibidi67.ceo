@@ -86,6 +86,9 @@ impl<'r> Responder<'r, 'static> for AppError {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
         let status = self.status();
         let msg = self.to_string();
+        if status.code >= 500 {
+            tracing::error!(status = status.code, message = %msg, "server error");
+        }
         let body = ErrorBody {
             error: status.reason().unwrap_or("error"),
             message: &msg,

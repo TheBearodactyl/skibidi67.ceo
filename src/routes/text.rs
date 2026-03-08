@@ -29,9 +29,9 @@ fn load_theme(bytes: &'static [u8]) -> Theme {
     ThemeSet::load_from_reader(&mut Cursor::new(bytes)).expect("couldn't load theme")
 }
 
-#[get("/text")]
-pub fn list_text(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
-    media::handle_list(state, "text/")
+#[get("/text?<q>")]
+pub fn list_text(state: &State<AppState>, q: Option<&str>) -> Json<Vec<VideoMeta>> {
+    media::handle_list(state, "text/", q)
 }
 
 #[get("/text/<id>")]

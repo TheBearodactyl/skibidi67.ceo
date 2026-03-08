@@ -234,6 +234,7 @@ pub fn listing(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     let mut videos: Vec<VideoCtx> = Vec::new();
     let mut audio: Vec<VideoCtx> = Vec::new();
@@ -351,6 +352,7 @@ pub fn listing(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
             base_url: site.base_url,
             latest_videos,
@@ -371,6 +373,7 @@ pub fn video_listing(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     Template::render(
         "videos",
@@ -378,6 +381,7 @@ pub fn video_listing(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
         },
     )
@@ -392,6 +396,7 @@ pub fn audio_listing(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     Template::render(
         "audio_listing",
@@ -399,6 +404,7 @@ pub fn audio_listing(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
         },
     )
@@ -413,6 +419,7 @@ pub fn image_listing(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     Template::render(
         "image_listing",
@@ -420,6 +427,7 @@ pub fn image_listing(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
         },
     )
@@ -435,6 +443,7 @@ fn render_media_player(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
     let site_host = site.site_host;
     let base_url = site.base_url;
     let video = state.videos.get(id).map(|v| VideoCtx::from_meta(v.value()));
@@ -446,6 +455,7 @@ fn render_media_player(
                 user: platform_user.map(UserCtx::from_platform),
                 is_admin,
                 has_github_oauth,
+                has_discord_oauth,
                 site_host: site_host.clone(),
                 title: "Not Found",
                 message: "This media does not exist or has been deleted.",
@@ -462,6 +472,7 @@ fn render_media_player(
                 user: Option::<UserCtx>::None,
                 is_admin,
                 has_github_oauth,
+                has_discord_oauth,
                 site_host: site_host.clone(),
                 title: "Login Required",
                 message: "You must be logged in to view NSFW content.",
@@ -514,6 +525,7 @@ fn render_media_player(
             is_admin,
             is_owner,
             has_github_oauth,
+            has_discord_oauth,
             site_host,
             base_url,
             video,
@@ -564,6 +576,7 @@ pub fn text_listing(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     let mut items: Vec<VideoCtx> = state
         .videos
@@ -579,6 +592,7 @@ pub fn text_listing(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
             items,
         },
@@ -655,6 +669,7 @@ pub fn upload_form(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     Template::render(
         "upload",
@@ -662,6 +677,7 @@ pub fn upload_form(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
         },
     )
@@ -676,6 +692,7 @@ pub fn admin_panel(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
     let mut videos: Vec<VideoCtx> = Vec::with_capacity(state.videos.len());
     let mut total_bytes: u64 = 0;
 
@@ -708,6 +725,7 @@ pub fn admin_panel(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
             videos,
             video_count: state.videos.len(),
@@ -726,6 +744,7 @@ async fn ui_delete_impl(
     let platform_user = user.as_ref().map(|u| &u.0);
     let is_admin = platform_user.is_some_and(|u| state.is_admin(&u.provider, u.id));
     let has_github_oauth = state.github_oauth.is_some();
+    let has_discord_oauth = state.discord_oauth.is_some();
 
     let (title, message) = if !is_admin {
         ("Error".to_owned(), "Admin access required.".to_owned())
@@ -761,6 +780,7 @@ async fn ui_delete_impl(
             user: platform_user.map(UserCtx::from_platform),
             is_admin,
             has_github_oauth,
+            has_discord_oauth,
             site_host: site.site_host,
             title,
             message,

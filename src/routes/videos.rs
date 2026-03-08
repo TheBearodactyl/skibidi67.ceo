@@ -22,9 +22,9 @@ pub fn conversion_progress(upload_id: &str, state: &State<AppState>) -> Json<ser
     media::get_conversion_progress(upload_id, state)
 }
 
-#[get("/videos")]
-pub fn list_videos(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
-    media::handle_list(state, "video/")
+#[get("/videos?<q>")]
+pub fn list_videos(state: &State<AppState>, q: Option<&str>) -> Json<Vec<VideoMeta>> {
+    media::handle_list(state, "video/", q)
 }
 
 #[get("/videos/<id>")]

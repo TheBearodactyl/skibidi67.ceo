@@ -6,6 +6,30 @@
 {% block content %}
 <h2>Audio</h2>
 
+<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+  <input type="text" id="search-input" placeholder="Search..." style="flex:1;max-width:400px;">
+  <button id="search-info-btn" style="font-size:0.8rem;padding:0.25rem 0.5rem;" onclick="document.getElementById('search-info').style.display=document.getElementById('search-info').style.display==='none'?'block':'none'">(?)</button>
+</div>
+<div id="search-info" style="display:none;background:var(--mantle);padding:0.75rem;border-radius:4px;margin-bottom:1rem;font-size:0.85rem;">
+<pre style="margin:0;white-space:pre-wrap;">Filter queries (combine with free text):
+  title.contains("text")     - Search within titles
+  uploader.is("name")        - Exact uploader match
+  uploader.contains("text")  - Search uploader names
+  sha2.is("hash")            - Exact SHA-256 hash
+  tlsh.is("hash")            - Exact TLSH hash
+  tlsh.near("hash")          - Similar TLSH (distance &lt; 100)
+  nsfw.is(true)              - Filter by NSFW flag
+  size.gt(1000000)           - Larger than N bytes
+  size.lt(1000000)           - Smaller than N bytes
+  date.after("2024-01-01")   - Uploaded after date
+  date.before("2024-12-31")  - Uploaded before date
+  mime.is("audio/mpeg")      - Exact content type
+  id.is("uuid")              - Exact ID match
+  replies.contains("regex")  - Search in comments
+
+Free text is fuzzy-matched against titles.</pre>
+</div>
+
 <ul id="list-container">
   <li id="list-loading" style="color:var(--subtext0);list-style:none">Loading…</li>
 </ul>
@@ -16,31 +40,43 @@
 {% block scripts %}
 <script>
 (function () {
-  fetch('/audio')
-    .then(function (r) { return r.json(); })
-    .then(function (items) {
-      var container = document.getElementById('list-container');
-      container.innerHTML = '';
-      if (!items || items.length === 0) {
-        container.innerHTML = '<li style="list-style:none">No audio yet.{% if user %} <a href="/ui/upload">Be the first to upload!</a>{% endif %}</li>';
-        return;
-      }
-      items
-        .filter(function (v) { return !v.unlisted; })
-        .sort(function (a, b) { return b.uploaded_at < a.uploaded_at ? -1 : 1; })
-        .forEach(function (v) {
-          var size = fmt_size(v.size_bytes);
-          var date = fmt_date(v.uploaded_at);
-          var tags = (v.nsfw ? ' [NSFW]' : '') + (v.references_id ? ' [dedup]' : '');
-          var li = document.createElement('li');
-          li.innerHTML = '<a href="/ui/audio/' + v.id + '">' + esc(v.title) + '</a>'
-            + tags + ' — ' + esc(v.uploaded_by_name) + ', ' + date + ', ' + size;
-          container.appendChild(li);
-        });
-    })
-    .catch(function () {
-      document.getElementById('list-loading').textContent = 'Failed to load audio.';
-    });
+  var debounceTimer;
+  var searchInput = document.getElementById('search-input');
+  searchInput.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () { loadItems(); }, 300);
+  });
+
+  loadItems();
+
+  function loadItems() {
+    var q = searchInput.value.trim();
+    var url = '/audio' + (q ? '?q=' + encodeURIComponent(q) : '');
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (items) {
+        var container = document.getElementById('list-container');
+        container.innerHTML = '';
+        if (!items || items.length === 0) {
+          container.innerHTML = '<li style="list-style:none">No audio found.{% if user %} <a href="/ui/upload">Upload one!</a>{% endif %}</li>';
+          return;
+        }
+        items
+          .filter(function (v) { return !v.unlisted; })
+          .forEach(function (v) {
+            var size = fmt_size(v.size_bytes);
+            var date = fmt_date(v.uploaded_at);
+            var tags = (v.nsfw ? ' [NSFW]' : '') + (v.references_id ? ' [dedup]' : '');
+            var li = document.createElement('li');
+            li.innerHTML = '<a href="/ui/audio/' + v.id + '">' + esc(v.title) + '</a>'
+              + tags + ' — ' + esc(v.uploaded_by_name) + ', ' + date + ', ' + size;
+            container.appendChild(li);
+          });
+      })
+      .catch(function () {
+        document.getElementById('list-container').innerHTML = '<li style="list-style:none">Failed to load audio.</li>';
+      });
+  }
 
   function fmt_size(b) {
     var units = ['B','KB','MB','GB','TB'], s = b;

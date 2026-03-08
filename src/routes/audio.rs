@@ -17,9 +17,9 @@ use {
     },
 };
 
-#[get("/audio")]
-pub fn list_audio(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
-    media::handle_list(state, "audio/")
+#[get("/audio?<q>")]
+pub fn list_audio(state: &State<AppState>, q: Option<&str>) -> Json<Vec<VideoMeta>> {
+    media::handle_list(state, "audio/", q)
 }
 
 #[get("/audio/<id>")]

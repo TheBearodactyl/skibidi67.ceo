@@ -56,14 +56,36 @@ impl GithubOAuthConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DiscordOAuthConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
+}
+
+impl DiscordOAuthConfig {
+    pub fn from_env() -> Option<Self> {
+        let client_id = std::env::var("DISCORD_CLIENT_ID").ok()?;
+        let client_secret = std::env::var("DISCORD_CLIENT_SECRET").ok()?;
+        let redirect_uri = std::env::var("DISCORD_REDIRECT_URI").ok()?;
+        Some(Self {
+            client_id,
+            client_secret,
+            redirect_uri,
+        })
+    }
+}
+
 pub struct AppState {
     pub oauth: OsuOAuthConfig,
     pub github_oauth: Option<GithubOAuthConfig>,
+    pub discord_oauth: Option<DiscordOAuthConfig>,
     pub pending_states: DashMap<String, ()>,
     pub sessions: DashMap<String, Session>,
     pub videos: DashMap<String, VideoMeta>,
     pub video_hashes: DashMap<String, String>,
     pub video_tlsh: DashMap<String, String>,
+    #[allow(dead_code)]
     pub admin_ids: HashMap<String, HashSet<u64>>,
     pub upload_dir: String,
     pub upload_sessions: DashMap<String, UploadSession>,
@@ -77,6 +99,7 @@ impl AppState {
     pub fn new(
         oauth: OsuOAuthConfig,
         github_oauth: Option<GithubOAuthConfig>,
+        discord_oauth: Option<DiscordOAuthConfig>,
         admin_ids: HashMap<String, HashSet<u64>>,
         upload_dir: String,
     ) -> Self {
@@ -109,9 +132,9 @@ impl AppState {
                             }
                             videos.insert(meta.id.clone(), meta);
                         }
-                        Err(e) => eprintln!("Warning: could not parse {:?}: {}", path, e),
+                        Err(e) => tracing::warn!("could not parse {:?}: {}", path, e),
                     },
-                    Err(e) => eprintln!("Warning: could not read {:?}: {}", path, e),
+                    Err(e) => tracing::warn!("could not read {:?}: {}", path, e),
                 }
             }
         }
@@ -128,9 +151,9 @@ impl AppState {
                             Ok(c) => {
                                 comments.insert(video_id.to_owned(), c);
                             }
-                            Err(e) => eprintln!("Warning: could not parse {:?}: {}", path, e),
+                            Err(e) => tracing::warn!("could not parse {:?}: {}", path, e),
                         },
-                        Err(e) => eprintln!("Warning: could not read {:?}: {}", path, e),
+                        Err(e) => tracing::warn!("could not read {:?}: {}", path, e),
                     }
                 }
             }
@@ -152,11 +175,12 @@ impl AppState {
             }
         };
 
-        println!("Loaded {} video(s) from disk.", videos.len());
+        tracing::info!("Loaded {} video(s) from disk.", videos.len());
 
         Self {
             oauth,
             github_oauth,
+            discord_oauth,
             pending_states: DashMap::new(),
             sessions: DashMap::new(),
             videos,
@@ -172,6 +196,7 @@ impl AppState {
         }
     }
 
+    #[allow(unused)]
     pub fn is_admin(&self, provider: &str, user_id: u64) -> bool {
         #[cfg(debug_assertions)]
         return true;
@@ -202,13 +227,10 @@ impl AppState {
         match serde_json::to_string_pretty(meta) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&path, json) {
-                    eprintln!("Warning: could not write metadata to {:?}: {}", path, e);
+                    tracing::warn!("could not write metadata to {:?}: {}", path, e);
                 }
             }
-            Err(e) => eprintln!(
-                "Warning: could not serialize metadata for {}: {}",
-                meta.id, e
-            ),
+            Err(e) => tracing::warn!("could not serialize metadata for {}: {}", meta.id, e),
         }
     }
 
@@ -217,7 +239,7 @@ impl AppState {
         if let Err(e) = std::fs::remove_file(&path)
             && e.kind() != std::io::ErrorKind::NotFound
         {
-            eprintln!("Warning: could not delete metadata {:?}: {}", path, e);
+            tracing::warn!("could not delete metadata {:?}: {}", path, e);
         }
     }
 
@@ -231,13 +253,10 @@ impl AppState {
         match serde_json::to_string_pretty(&comments) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&path, json) {
-                    eprintln!("Warning: could not write comments to {:?}: {}", path, e);
+                    tracing::warn!("could not write comments to {:?}: {}", path, e);
                 }
             }
-            Err(e) => eprintln!(
-                "Warning: could not serialize comments for {}: {}",
-                video_id, e
-            ),
+            Err(e) => tracing::warn!("could not serialize comments for {}: {}", video_id, e),
         }
     }
 
@@ -247,13 +266,10 @@ impl AppState {
         match serde_json::to_string_pretty(&*pick) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&path, json) {
-                    eprintln!(
-                        "Warning: could not write daily pick current to {:?}: {}",
-                        path, e
-                    );
+                    tracing::warn!("could not write daily pick current to {:?}: {}", path, e);
                 }
             }
-            Err(e) => eprintln!("Warning: could not serialize daily pick current: {}", e),
+            Err(e) => tracing::warn!("could not serialize daily pick current: {}", e),
         }
     }
 
@@ -263,10 +279,10 @@ impl AppState {
         match serde_json::to_string_pretty(&*queue) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&path, json) {
-                    eprintln!("Warning: could not write daily queue to {:?}: {}", path, e);
+                    tracing::warn!("could not write daily queue to {:?}: {}", path, e);
                 }
             }
-            Err(e) => eprintln!("Warning: could not serialize daily queue: {}", e),
+            Err(e) => tracing::warn!("could not serialize daily queue: {}", e),
         }
     }
 
@@ -276,7 +292,7 @@ impl AppState {
         if let Err(e) = std::fs::remove_file(&path)
             && e.kind() != std::io::ErrorKind::NotFound
         {
-            eprintln!("Warning: could not delete comments {:?}: {}", path, e);
+            tracing::warn!("could not delete comments {:?}: {}", path, e);
         }
     }
 }

@@ -5,6 +5,7 @@ use {
         models::{Comment, VideoMeta},
         state::AppState,
     },
+    fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2},
     hex::ToHex,
     rocket::{
         Data, State,
@@ -49,11 +50,9 @@ pub const ALLOWED_IMAGE_TYPES: &[&str] = &[
 ];
 
 pub const ALLOWED_TEXT_TYPES: &[&str] = &["text/plain"];
-
 const MAGIC_READ_BYTES: usize = 256;
 
 pub struct RangeHeader(pub Option<String>);
-
 #[rocket::async_trait]
 impl<'r> rocket::request::FromRequest<'r> for RangeHeader {
     type Error = ();
@@ -269,6 +268,8 @@ pub async fn stream_file(
     allow_segment_extraction: bool,
 ) -> Result<MediaResponse, AppError> {
     let meta = state.videos.get(id).ok_or(AppError::VideoNotFound)?.clone();
+
+    maybe_backfill_tlsh(&meta, state);
 
     let filename = if let Some(ref ref_id) = meta.references_id {
         state
@@ -926,7 +927,255 @@ pub fn get_conversion_progress(
     Json(serde_json::json!({ "progress": progress }))
 }
 
-pub fn handle_list(state: &State<AppState>, mime_prefix: &str) -> Json<Vec<VideoMeta>> {
+enum FilterExpr {
+    TitleContains(String),
+    UploaderIs(String),
+    UploaderContains(String),
+    Sha2Is(String),
+    TlshIs(String),
+    TlshNear(String),
+    NsfwIs(bool),
+    SizeGt(u64),
+    SizeLt(u64),
+    DateAfter(String),
+    DateBefore(String),
+    MimeIs(String),
+    IdIs(String),
+    RepliesContains(String),
+}
+
+fn parse_search_query(query: &str) -> (Vec<FilterExpr>, String) {
+    let mut filters = Vec::new();
+    let mut free_text = String::new();
+    let mut remaining = query;
+
+    while !remaining.is_empty() {
+        remaining = remaining.trim_start();
+        if remaining.is_empty() {
+            break;
+        }
+
+        if let Some(filter) = try_parse_filter(&mut remaining) {
+            filters.push(filter);
+        } else {
+            let end = remaining
+                .find(char::is_whitespace)
+                .unwrap_or(remaining.len());
+            if !free_text.is_empty() {
+                free_text.push(' ');
+            }
+            free_text.push_str(&remaining[..end]);
+            remaining = &remaining[end..];
+        }
+    }
+
+    (filters, free_text)
+}
+
+type FilterFn = fn(&str) -> FilterExpr;
+
+fn try_parse_filter(input: &mut &str) -> Option<FilterExpr> {
+    let patterns: &[(&str, FilterFn)] = &[
+        ("title.contains(", |v| {
+            FilterExpr::TitleContains(v.to_owned())
+        }),
+        ("uploader.is(", |v| FilterExpr::UploaderIs(v.to_owned())),
+        ("uploader.contains(", |v| {
+            FilterExpr::UploaderContains(v.to_owned())
+        }),
+        ("sha2.is(", |v| FilterExpr::Sha2Is(v.to_owned())),
+        ("tlsh.is(", |v| FilterExpr::TlshIs(v.to_owned())),
+        ("tlsh.near(", |v| FilterExpr::TlshNear(v.to_owned())),
+        ("mime.is(", |v| FilterExpr::MimeIs(v.to_owned())),
+        ("id.is(", |v| FilterExpr::IdIs(v.to_owned())),
+        ("replies.contains(", |v| {
+            FilterExpr::RepliesContains(v.to_owned())
+        }),
+    ];
+
+    for (prefix, constructor) in patterns {
+        if let Some(rest) = input.strip_prefix(*prefix)
+            && let Some(val) = extract_quoted_or_paren(rest)
+        {
+            let consumed = prefix.len() + val.1;
+            *input = &input[consumed..];
+            return Some(constructor(&val.0));
+        }
+    }
+
+    if let Some(rest) = input.strip_prefix("nsfw.is(")
+        && let Some((val, len)) = extract_quoted_or_paren(rest)
+    {
+        *input = &input[8 + len..];
+        return Some(FilterExpr::NsfwIs(val == "true"));
+    }
+
+    if let Some(rest) = input.strip_prefix("size.gt(")
+        && let Some((val, len)) = extract_quoted_or_paren(rest)
+        && let Ok(n) = val.parse::<u64>()
+    {
+        *input = &input[8 + len..];
+        return Some(FilterExpr::SizeGt(n));
+    }
+
+    if let Some(rest) = input.strip_prefix("size.lt(")
+        && let Some((val, len)) = extract_quoted_or_paren(rest)
+        && let Ok(n) = val.parse::<u64>()
+    {
+        *input = &input[8 + len..];
+        return Some(FilterExpr::SizeLt(n));
+    }
+
+    if let Some(rest) = input.strip_prefix("date.after(")
+        && let Some((val, len)) = extract_quoted_or_paren(rest)
+    {
+        *input = &input[11 + len..];
+        return Some(FilterExpr::DateAfter(val));
+    }
+
+    if let Some(rest) = input.strip_prefix("date.before(")
+        && let Some((val, len)) = extract_quoted_or_paren(rest)
+    {
+        *input = &input[12 + len..];
+        return Some(FilterExpr::DateBefore(val));
+    }
+
+    None
+}
+
+fn extract_quoted_or_paren(s: &str) -> Option<(String, usize)> {
+    if let Some(rest) = s.strip_prefix('"') {
+        let (val, after_quote) = rest.split_once('"')?;
+        let (consumed, trailing) = match after_quote.strip_prefix(')') {
+            Some(t) => (1, t),
+            None => (0, after_quote),
+        };
+
+        let n = 1 + val.len() + 1 + consumed;
+        let _ = trailing;
+        Some((val.to_owned(), n))
+    } else {
+        let (val, _rest) = s.split_once(')')?;
+        Some((val.to_owned(), val.len() + 1))
+    }
+}
+
+fn apply_filters(meta: &VideoMeta, filters: &[FilterExpr], state: &AppState) -> bool {
+    for filter in filters {
+        match filter {
+            FilterExpr::TitleContains(text) => {
+                if !meta.title.to_lowercase().contains(&text.to_lowercase()) {
+                    return false;
+                }
+            }
+            FilterExpr::UploaderIs(name) => {
+                if meta.uploaded_by_name.to_lowercase() != name.to_lowercase() {
+                    return false;
+                }
+            }
+            FilterExpr::UploaderContains(text) => {
+                if !meta
+                    .uploaded_by_name
+                    .to_lowercase()
+                    .contains(&text.to_lowercase())
+                {
+                    return false;
+                }
+            }
+            FilterExpr::Sha2Is(hash) => {
+                if meta.sha256.to_lowercase() != hash.to_lowercase() {
+                    return false;
+                }
+            }
+            FilterExpr::TlshIs(hash) => match &meta.tlsh_hash {
+                Some(h) if h.to_lowercase() == hash.to_lowercase() => {}
+                _ => return false,
+            },
+            FilterExpr::TlshNear(hash) => match &meta.tlsh_hash {
+                Some(h) => {
+                    use tlsh2::TlshDefault;
+                    let ok = h
+                        .parse::<TlshDefault>()
+                        .ok()
+                        .and_then(|existing| {
+                            hash.parse::<TlshDefault>()
+                                .ok()
+                                .map(|target| existing.diff(&target, true) < 100)
+                        })
+                        .unwrap_or(false);
+                    if !ok {
+                        return false;
+                    }
+                }
+                None => return false,
+            },
+            FilterExpr::NsfwIs(val) => {
+                if meta.nsfw != *val {
+                    return false;
+                }
+            }
+            FilterExpr::SizeGt(n) => {
+                if meta.size_bytes <= *n {
+                    return false;
+                }
+            }
+            FilterExpr::SizeLt(n) => {
+                if meta.size_bytes >= *n {
+                    return false;
+                }
+            }
+            FilterExpr::DateAfter(date_str) => {
+                let meta_date = meta.uploaded_at.format("%Y-%m-%d").to_string();
+                if meta_date.as_str() <= date_str.as_str() {
+                    return false;
+                }
+            }
+            FilterExpr::DateBefore(date_str) => {
+                let meta_date = meta.uploaded_at.format("%Y-%m-%d").to_string();
+                if meta_date.as_str() >= date_str.as_str() {
+                    return false;
+                }
+            }
+            FilterExpr::MimeIs(mime) => {
+                if meta.content_type != *mime {
+                    return false;
+                }
+            }
+            FilterExpr::IdIs(id) => {
+                if meta.id != *id {
+                    return false;
+                }
+            }
+            FilterExpr::RepliesContains(pattern) => {
+                let comments = state.comments.get(&meta.id);
+                let matches = comments.as_ref().is_some_and(|cs| {
+                    if let Ok(re) = regex_lite_match(pattern) {
+                        cs.iter().any(|c| re(&c.text))
+                    } else {
+                        let pat_lower = pattern.to_lowercase();
+                        cs.iter()
+                            .any(|c| c.text.to_lowercase().contains(&pat_lower))
+                    }
+                });
+                if !matches {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn regex_lite_match(pattern: &str) -> Result<impl Fn(&str) -> bool + '_, ()> {
+    let pat_lower = pattern.to_lowercase();
+    Ok(move |text: &str| text.to_lowercase().contains(&pat_lower))
+}
+
+pub fn handle_list(
+    state: &State<AppState>,
+    mime_prefix: &str,
+    query: Option<&str>,
+) -> Json<Vec<VideoMeta>> {
     let mut items: Vec<VideoMeta> = state
         .videos
         .iter()
@@ -936,16 +1185,86 @@ pub fn handle_list(state: &State<AppState>, mime_prefix: &str) -> Json<Vec<Video
         .map(|entry| entry.value().clone())
         .collect();
 
+    if let Some(q) = query {
+        let q = q.trim();
+        if !q.is_empty() {
+            let (filters, free_text) = parse_search_query(q);
+
+            if !filters.is_empty() {
+                items.retain(|meta| apply_filters(meta, &filters, state));
+            }
+
+            if !free_text.is_empty() {
+                let matcher = SkimMatcherV2::default();
+                let mut scored: Vec<(VideoMeta, i64)> = items
+                    .into_iter()
+                    .filter_map(|meta| {
+                        matcher
+                            .fuzzy_match(&meta.title, &free_text)
+                            .map(|score| (meta, score))
+                    })
+                    .collect();
+                scored.sort_unstable_by_key(|b| std::cmp::Reverse(b.1));
+                return Json(scored.into_iter().map(|(m, _)| m).collect());
+            }
+        }
+    }
+
     items.sort_unstable_by_key(|b| std::cmp::Reverse(b.uploaded_at));
     Json(items)
 }
 
 pub fn handle_get(id: &str, state: &State<AppState>) -> AppResult<Json<VideoMeta>> {
-    state
+    let meta = state
         .videos
         .get(id)
-        .map(|v| Json(v.clone()))
-        .ok_or(AppError::VideoNotFound)
+        .map(|v| v.clone())
+        .ok_or(AppError::VideoNotFound)?;
+
+    maybe_backfill_tlsh(&meta, state);
+
+    Ok(Json(meta))
+}
+
+fn maybe_backfill_tlsh(meta: &VideoMeta, state: &State<AppState>) {
+    if !meta.content_type.starts_with("video/")
+        || meta.tlsh_hash.is_some()
+        || meta.references_id.is_some()
+    {
+        return;
+    }
+
+    let file_path = Path::new(&state.upload_dir).join(&meta.filename);
+    let meta_id = meta.id.clone();
+    let upload_dir = state.upload_dir.clone();
+
+    let videos = state.videos.clone();
+    let video_tlsh = state.video_tlsh.clone();
+
+    tokio::spawn(async move {
+        let result = tokio::task::spawn_blocking(move || -> Option<String> {
+            let bytes = std::fs::read(&file_path).ok()?;
+            let tlsh_hex =
+                TlshDefaultBuilder::build_from(&bytes).map(|t| t.hash().encode_hex::<String>())?;
+            Some(tlsh_hex)
+        })
+        .await;
+
+        if let Ok(Some(tlsh_hex)) = result
+            && let Some(mut entry) = videos.get_mut(&meta_id)
+        {
+            entry.tlsh_hash = Some(tlsh_hex.clone());
+            let updated = entry.clone();
+            drop(entry);
+            video_tlsh.insert(meta_id.clone(), tlsh_hex);
+
+            let path = Path::new(&upload_dir).join(format!("{}.meta.json", meta_id));
+            if let Ok(json) = serde_json::to_string_pretty(&updated) {
+                let _ = std::fs::write(&path, json);
+            }
+            tracing::info!(id = %meta_id, "backfilled TLSH hash for video");
+        }
+    });
 }
 
 pub fn handle_patch_nsfw(

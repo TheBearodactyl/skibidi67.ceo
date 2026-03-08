@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 chrono = { version = "0.4.43", features = ["serde"] }
 color-eyre = "0.6.5"
+fuzzy-matcher = "0.3"
 dashmap = "6.1.0"
 dotenvy = "0.15.7"
 hashbrown = { version = "0.16.1", features = ["serde"] }
@@ -21,4 +22,7 @@ syntect = "5.3.0"
 thiserror = "2.0.18"
 tlsh2 = { version = "0.3", features = ["diff"] }
 tokio = { version = "1.49.0", features = ["full"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1.21.0", features = ["v4"] }

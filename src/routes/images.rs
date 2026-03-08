@@ -17,9 +17,9 @@ use {
     },
 };
 
-#[get("/images")]
-pub fn list_images(state: &State<AppState>) -> Json<Vec<VideoMeta>> {
-    media::handle_list(state, "image/")
+#[get("/images?<q>")]
+pub fn list_images(state: &State<AppState>, q: Option<&str>) -> Json<Vec<VideoMeta>> {
+    media::handle_list(state, "image/", q)
 }
 
 #[get("/images/<id>")]

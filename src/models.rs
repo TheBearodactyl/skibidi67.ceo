@@ -39,6 +39,23 @@ pub struct GithubUser {
     pub avatar_url: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct DiscordTokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
+    pub refresh_token: Option<String>,
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DiscordUser {
+    pub id: String,
+    pub username: String,
+    pub avatar: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformUser {
     pub provider: String,
@@ -63,6 +80,20 @@ impl PlatformUser {
             id: u.id,
             username: u.login.clone(),
             avatar_url: u.avatar_url.clone(),
+        }
+    }
+
+    pub fn from_discord(u: &DiscordUser) -> Self {
+        let avatar_url = match &u.avatar {
+            Some(hash) => format!("https://cdn.discordapp.com/avatars/{}/{}.png", u.id, hash),
+            None => "https://cdn.discordapp.com/embed/avatars/0.png".to_owned(),
+        };
+        let id: u64 = u.id.parse().unwrap_or(0);
+        Self {
+            provider: "discord".to_owned(),
+            id,
+            username: u.username.clone(),
+            avatar_url,
         }
     }
 }

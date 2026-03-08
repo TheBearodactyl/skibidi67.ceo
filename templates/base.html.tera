@@ -192,6 +192,7 @@
     {% else %}
       | <a href="/auth/login">Sign in with osu!</a>
       {% if has_github_oauth %} | <a href="/auth/github/login">Sign in with GitHub</a>{% endif %}
+      {% if has_discord_oauth %} | <a href="/auth/discord/login">Sign in with Discord</a>{% endif %}
     {% endif %}
   </nav>
   <hr>

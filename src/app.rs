@@ -1,12 +1,13 @@
 use {
     crate::{
         routes,
-        state::{AppState, GithubOAuthConfig, OsuOAuthConfig},
+        state::{AppState, DiscordOAuthConfig, GithubOAuthConfig, OsuOAuthConfig},
     },
     color_eyre::eyre::Context,
     hashbrown::{HashMap, HashSet},
     rocket::{Build, Rocket, routes},
     rocket_dyn_templates::Template,
+    tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
 
 pub(crate) fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
@@ -16,9 +17,10 @@ pub(crate) fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
         .filter(|s| !s.trim().is_empty())
         .filter_map(|s| {
             s.trim().parse::<u64>().ok().or_else(|| {
-                eprintln!(
-                    "Warning: could not parse admin ID '{}' from {}, skipping",
-                    s, env_var
+                tracing::warn!(
+                    "could not parse admin ID '{}' from {}, skipping",
+                    s,
+                    env_var
                 );
                 None
             })
@@ -28,6 +30,23 @@ pub(crate) fn parse_admin_ids(env_var: &str) -> HashSet<u64> {
 
 pub fn run() -> Rocket<Build> {
     color_eyre::install().expect("Failed to install color-eyre");
+
+    {
+        let file_appender = tracing_appender::rolling::daily("logs", "skibidi67.log");
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_writer(file_appender)
+            .with_ansi(true);
+
+        let stdout_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_ansi(true);
+
+        tracing_subscriber::registry()
+            .with(stdout_layer)
+            .with(file_layer)
+            .init();
+    }
+
     let _ = dotenvy::dotenv();
     let oauth_config = OsuOAuthConfig::from_env()
         .wrap_err("Failed to load OAuth configuration")
@@ -35,10 +54,19 @@ pub fn run() -> Rocket<Build> {
 
     let github_oauth = GithubOAuthConfig::from_env();
     if github_oauth.is_some() {
-        println!("GitHub OAuth configured.");
+        tracing::info!("GitHub OAuth configured.");
     } else {
-        println!(
+        tracing::info!(
             "GitHub OAuth not configured (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI to enable)."
+        );
+    }
+
+    let discord_oauth = DiscordOAuthConfig::from_env();
+    if discord_oauth.is_some() {
+        tracing::info!("Discord OAuth configured.");
+    } else {
+        tracing::info!(
+            "Discord OAuth not configured (set DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI to enable)."
         );
     }
 
@@ -56,12 +84,15 @@ pub fn run() -> Rocket<Build> {
         admin_ids.insert("github".to_owned(), github_admins);
     }
 
+    let discord_admins = parse_admin_ids("ADMIN_DISCORD_IDS");
+    if !discord_admins.is_empty() {
+        admin_ids.insert("discord".to_owned(), discord_admins);
+    }
+
     if admin_ids.is_empty() {
-        eprintln!(
-            "Warning: No admin IDs configured — no one will have admin/moderation privileges!"
-        );
+        tracing::warn!("No admin IDs configured — no one will have admin/moderation privileges!");
     } else {
-        println!("Admin IDs: {:?}", admin_ids);
+        tracing::info!("Admin IDs: {:?}", admin_ids);
     }
 
     let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".into());
@@ -69,7 +100,13 @@ pub fn run() -> Rocket<Build> {
         .wrap_err_with(|| format!("Could not create upload directory: {}", upload_dir))
         .expect("Failed to create upload dir");
 
-    let app_state = AppState::new(oauth_config, github_oauth, admin_ids, upload_dir);
+    let app_state = AppState::new(
+        oauth_config,
+        github_oauth,
+        discord_oauth,
+        admin_ids,
+        upload_dir,
+    );
 
     rocket::build()
         .manage(app_state)
@@ -82,6 +119,8 @@ pub fn run() -> Rocket<Build> {
                 routes::auth::callback,
                 routes::auth::github_login,
                 routes::auth::github_callback,
+                routes::auth::discord_login,
+                routes::auth::discord_callback,
                 routes::auth::logout,
                 routes::auth::me,
                 routes::auth::me_unauthenticated,
