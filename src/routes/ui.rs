@@ -2,7 +2,7 @@ use {
     crate::{auth::AuthenticatedUser, models::PlatformUser, state::AppState},
     rocket::{
         State, get,
-        http::{ContentType, Status},
+        http::Status,
         response::Redirect,
         serde::json::Json,
     },
@@ -211,12 +211,25 @@ fn show_nsfw_on_homepage() -> bool {
     })
 }
 
+pub struct CachedFavicon;
+
+impl<'r> rocket::response::Responder<'r, 'static> for CachedFavicon {
+    fn respond_to(
+        self,
+        _req: &'r rocket::request::Request<'_>,
+    ) -> rocket::response::Result<'static> {
+        static FAVICON: &[u8] = include_bytes!("../../static/favicon.ico");
+        rocket::response::Response::build()
+            .raw_header("Content-Type", "image/x-icon")
+            .raw_header("Cache-Control", "public, max-age=604800")
+            .sized_body(FAVICON.len(), std::io::Cursor::new(FAVICON))
+            .ok()
+    }
+}
+
 #[get("/favicon.ico")]
-pub fn favicon() -> (ContentType, &'static [u8]) {
-    (
-        ContentType::Icon,
-        include_bytes!("../../static/favicon.ico"),
-    )
+pub fn favicon() -> CachedFavicon {
+    CachedFavicon
 }
 
 #[get("/")]

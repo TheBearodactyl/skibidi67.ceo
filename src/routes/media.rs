@@ -83,7 +83,8 @@ impl<'r> rocket::response::Responder<'r, 'static> for MediaResponse {
             .status(self.status)
             .raw_header("Content-Type", self.content_type)
             .raw_header("Content-Length", self.body_len.to_string())
-            .raw_header("Accept-Ranges", "bytes");
+            .raw_header("Accept-Ranges", "bytes")
+            .raw_header("Cache-Control", "public, max-age=31536000, immutable");
 
         if !self.content_range.is_empty() {
             builder.raw_header("Content-Range", self.content_range);

@@ -12,6 +12,9 @@
 <meta property="og:image:type" content="{{ video.content_type }}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="{{ file_url }}">
+{% if not video.nsfw %}
+<link rel="preload" as="image" href="/images/{{ video.id }}/file" fetchpriority="high">
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -49,7 +52,7 @@
 <img id="v" src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%">
 </div>
 {% else %}
-<img src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%">
+<img src="/images/{{ video.id }}/file" alt="{{ video.title }}" style="max-width:100%" fetchpriority="high">
 {% endif %}
 
 <dl>

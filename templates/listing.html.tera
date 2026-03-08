@@ -53,7 +53,7 @@
       <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to view</a></p>
       {% endif %}
     {% else %}
-    <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%">
+    <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%" fetchpriority="high">
     {% endif %}
   {% elif featured.media_type == "text" %}
     <pre id="featured-text" style="white-space:pre-wrap; word-wrap:break-word; background:var(--mantle); padding:1rem; border-radius:4px; max-height:20rem; overflow:auto;">Loading…</pre>
@@ -69,7 +69,7 @@
       <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to watch (18+ only)</a></span></p>
       <div id="featured-media" hidden>
       <div style="max-width:1280px">
-      <video id="featured-v" controls style="width:100%">
+      <video id="featured-v" controls preload="metadata" style="width:100%">
         <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
       </video>
       </div>
@@ -79,7 +79,7 @@
       {% endif %}
     {% else %}
     <div style="max-width:1280px">
-    <video controls style="width:100%">
+    <video controls preload="metadata" style="width:100%">
       <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
     </video>
     </div>
@@ -90,19 +90,51 @@
 {% endif %}
 
 <h3>Latest Videos</h3>
-<ul id="latest-videos"><li style="color:var(--subtext0);list-style:none">Loading…</li></ul>
+<ul>
+{% if latest_videos | length == 0 %}
+  <li style="list-style:none">No videos yet.</li>
+{% else %}
+  {% for v in latest_videos %}
+  <li><a href="/ui/videos/{{ v.id }}">{{ v.title }}</a>{% if v.nsfw %} [NSFW]{% endif %} — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}</li>
+  {% endfor %}
+{% endif %}
+</ul>
 <p><a href="/ui/videos">View all videos →</a></p>
 
 <h3>Latest Audio</h3>
-<ul id="latest-audio"><li style="color:var(--subtext0);list-style:none">Loading…</li></ul>
+<ul>
+{% if latest_audio | length == 0 %}
+  <li style="list-style:none">No audio yet.</li>
+{% else %}
+  {% for v in latest_audio %}
+  <li><a href="/ui/audio/{{ v.id }}">{{ v.title }}</a>{% if v.nsfw %} [NSFW]{% endif %} — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}</li>
+  {% endfor %}
+{% endif %}
+</ul>
 <p><a href="/ui/audio">View all audio →</a></p>
 
 <h3>Latest Images</h3>
-<ul id="latest-images"><li style="color:var(--subtext0);list-style:none">Loading…</li></ul>
+<ul>
+{% if latest_images | length == 0 %}
+  <li style="list-style:none">No images yet.</li>
+{% else %}
+  {% for v in latest_images %}
+  <li><a href="/ui/images/{{ v.id }}">{{ v.title }}</a>{% if v.nsfw %} [NSFW]{% endif %} — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}</li>
+  {% endfor %}
+{% endif %}
+</ul>
 <p><a href="/ui/images">View all images →</a></p>
 
 <h3>Latest Text</h3>
-<ul id="latest-texts"><li style="color:var(--subtext0);list-style:none">Loading…</li></ul>
+<ul>
+{% if latest_texts | length == 0 %}
+  <li style="list-style:none">No text files yet.</li>
+{% else %}
+  {% for v in latest_texts %}
+  <li><a href="/ui/text/{{ v.id }}">{{ v.title }}</a>{% if v.nsfw %} [NSFW]{% endif %} — {{ v.uploaded_by_name }}, {{ v.uploaded_at_display }}, {{ v.size_human }}</li>
+  {% endfor %}
+{% endif %}
+</ul>
 <p><a href="/ui/text">View all text →</a></p>
 {% endblock %}
 
@@ -113,68 +145,5 @@ function reveal_featured() {
   document.getElementById('featured-gate').hidden = true;
   document.getElementById('featured-media').hidden = false;
 }
-
-(function () {
-  function fmt_size(b) {
-    var units = ['B','KB','MB','GB','TB'], s = b;
-    for (var i = 0; i < units.length; i++) {
-      if (s < 1024) return (s % 1 < 0.05 ? Math.round(s) : s.toFixed(1)) + ' ' + units[i];
-      s /= 1024;
-    }
-    return s.toFixed(1) + ' PB';
-  }
-
-  function fmt_date(iso) {
-    if (!iso) return '';
-    var d = new Date(iso);
-    return d.getUTCFullYear() + '-'
-      + String(d.getUTCMonth()+1).padStart(2,'0') + '-'
-      + String(d.getUTCDate()).padStart(2,'0') + ' '
-      + String(d.getUTCHours()).padStart(2,'0') + ':'
-      + String(d.getUTCMinutes()).padStart(2,'0') + ' UTC';
-  }
-
-  function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  function populate(containerId, items, uiPrefix, emptyMsg) {
-    var container = document.getElementById(containerId);
-    container.innerHTML = '';
-    var visible = items
-      .filter(function (v) { return !v.unlisted && !v.nsfw === false || !v.nsfw; })
-      .filter(function (v) { return !v.unlisted; })
-      .sort(function (a, b) { return b.uploaded_at < a.uploaded_at ? -1 : 1; })
-      .slice(0, 5);
-    if (visible.length === 0) {
-      container.innerHTML = '<li style="list-style:none">' + emptyMsg + '</li>';
-      return;
-    }
-    visible.forEach(function (v) {
-      var li = document.createElement('li');
-      li.innerHTML = '<a href="/ui/' + uiPrefix + '/' + v.id + '">' + esc(v.title) + '</a>'
-        + (v.nsfw ? ' [NSFW]' : '')
-        + ' — ' + esc(v.uploaded_by_name) + ', ' + fmt_date(v.uploaded_at) + ', ' + fmt_size(v.size_bytes);
-      container.appendChild(li);
-    });
-  }
-
-  var endpoints = [
-    { url: '/videos', id: 'latest-videos', prefix: 'videos', empty: 'No videos yet.' },
-    { url: '/audio',  id: 'latest-audio',  prefix: 'audio',  empty: 'No audio yet.'  },
-    { url: '/images', id: 'latest-images', prefix: 'images', empty: 'No images yet.' },
-    { url: '/text',   id: 'latest-texts',  prefix: 'text',   empty: 'No text files yet.' },
-  ];
-
-  endpoints.forEach(function (ep) {
-    fetch(ep.url)
-      .then(function (r) { return r.json(); })
-      .then(function (items) { populate(ep.id, items, ep.prefix, ep.empty); })
-      .catch(function () {
-        var el = document.getElementById(ep.id);
-        if (el) el.innerHTML = '<li style="list-style:none;color:var(--red)">Failed to load.</li>';
-      });
-  });
-})();
 </script>
 {% endblock %}

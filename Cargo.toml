@@ -14,6 +14,7 @@ hex = { version = "0.4.3", features = ["serde"] }
 mimalloc = "0.1.48"
 reqwest = { version = "0.13.2", features = ["json", "form"] }
 rocket = { version = "0.5.1", features = ["json"] }
+rocket_async_compression = "0.6"
 rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"

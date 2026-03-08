@@ -6,6 +6,7 @@ use {
     color_eyre::eyre::Context,
     hashbrown::{HashMap, HashSet},
     rocket::{Build, Rocket, routes},
+    rocket_async_compression::Compression,
     rocket_dyn_templates::Template,
     tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt},
 };
@@ -111,6 +112,7 @@ pub fn run() -> Rocket<Build> {
     rocket::build()
         .manage(app_state)
         .attach(Template::fairing())
+        .attach(Compression::fairing())
         .mount(
             "/",
             routes![
