@@ -256,18 +256,16 @@ pub async fn discord_callback(
 
     let client = reqwest::Client::new();
 
-    let form_body = format!(
-        "client_id={}&client_secret={}&code={}&grant_type=authorization_code&redirect_uri={}",
-        urlencoded(&dc.client_id),
-        urlencoded(&dc.client_secret),
-        urlencoded(code),
-        urlencoded(&dc.redirect_uri),
-    );
+    let mut form = HashMap::new();
+    form.insert("client_id", dc.client_id.clone());
+    form.insert("client_secret", dc.client_secret.clone());
+    form.insert("code", code.to_owned());
+    form.insert("grant_type", "authorization_code".to_owned());
+    form.insert("redirect_uri", dc.redirect_uri.clone());
 
     let token_res: DiscordTokenResponse = client
         .post(DISCORD_TOKEN_URL)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(form_body)
+        .form(&form)
         .send()
         .await
         .map_err(AppError::Reqwest)?
