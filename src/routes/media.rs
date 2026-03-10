@@ -229,13 +229,9 @@ pub async fn extract_segment(
 
     args.extend([
         "-c:v".into(),
-        "libx264".into(),
-        "-preset".into(),
-        "ultrafast".into(),
-        "-crf".into(),
-        "18".into(),
+        "copy".into(),
         "-c:a".into(),
-        "aac".into(),
+        "copy".into(),
         "-f".into(),
         "mp4".into(),
         "-movflags".into(),
