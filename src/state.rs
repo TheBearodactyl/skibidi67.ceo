@@ -1,5 +1,5 @@
 use {
-    crate::models::{Comment, Session, VideoMeta},
+    crate::models::{Comment, VideoMeta},
     dashmap::DashMap,
     hashbrown::{HashMap, HashSet},
     std::path::Path,
@@ -81,7 +81,7 @@ pub struct AppState {
     pub github_oauth: Option<GithubOAuthConfig>,
     pub discord_oauth: Option<DiscordOAuthConfig>,
     pub pending_states: DashMap<String, ()>,
-    pub sessions: DashMap<String, Session>,
+    pub jwt_secret: String,
     pub videos: DashMap<String, VideoMeta>,
     pub video_hashes: DashMap<String, String>,
     pub video_tlsh: DashMap<String, String>,
@@ -102,6 +102,7 @@ impl AppState {
         discord_oauth: Option<DiscordOAuthConfig>,
         admin_ids: HashMap<String, HashSet<u64>>,
         upload_dir: String,
+        jwt_secret: String,
     ) -> Self {
         let videos: DashMap<String, VideoMeta> = DashMap::new();
         let video_hashes: DashMap<String, String> = DashMap::new();
@@ -182,7 +183,7 @@ impl AppState {
             github_oauth,
             discord_oauth,
             pending_states: DashMap::new(),
-            sessions: DashMap::new(),
+            jwt_secret,
             videos,
             video_hashes,
             video_tlsh,

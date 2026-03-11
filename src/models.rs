@@ -98,15 +98,6 @@ impl PlatformUser {
     }
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct Session {
-    pub user: PlatformUser,
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoMeta {
     pub id: String,

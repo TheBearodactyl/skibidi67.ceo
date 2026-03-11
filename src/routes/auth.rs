@@ -1,10 +1,10 @@
 use {
     crate::{
-        auth::{AuthenticatedUser, SESSION_COOKIE},
+        auth::{create_jwt, validate_jwt, AuthenticatedUser, SESSION_COOKIE},
         error::AppError,
         models::{
             DiscordTokenResponse, DiscordUser, GithubTokenResponse, GithubUser, OsuTokenResponse,
-            OsuUser, PlatformUser, Session,
+            OsuUser, PlatformUser,
         },
         state::AppState,
     },
@@ -51,6 +51,21 @@ pub fn login(state: &State<AppState>) -> Redirect {
     Redirect::to(url)
 }
 
+fn set_jwt_cookie(cookies: &CookieJar<'_>, user: &PlatformUser, secret: &str) {
+    let remember = cookies.get("remember_me").map(|c| c.value()) == Some("true");
+    let jwt = create_jwt(user, secret, remember);
+
+    let mut cookie = Cookie::new(SESSION_COOKIE, jwt);
+    cookie.set_http_only(true);
+    cookie.set_same_site(SameSite::Lax);
+    cookie.set_secure(true);
+    cookie.set_path("/");
+    if remember {
+        cookie.set_max_age(rocket::time::Duration::days(30));
+    }
+    cookies.add(cookie);
+}
+
 #[get("/auth/callback?<code>&<state>")]
 pub async fn callback(
     code: &str,
@@ -94,26 +109,8 @@ pub async fn callback(
     let user: OsuUser =
         serde_json::from_value(me_res).map_err(|e| AppError::OsuUserFetch(e.to_string()))?;
 
-    let session_token = Uuid::new_v4().to_string();
-
-    let session = Session {
-        user: PlatformUser::from_osu(&user),
-        access_token: token_res.access_token,
-        refresh_token: token_res.refresh_token,
-        created_at: chrono::Utc::now(),
-    };
-
-    app_state.sessions.insert(session_token.clone(), session);
-
-    let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
-    cookie.set_http_only(true);
-    cookie.set_same_site(SameSite::Lax);
-    cookie.set_secure(true);
-    cookie.set_path("/");
-    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
-        cookie.set_max_age(rocket::time::Duration::days(30));
-    }
-    cookies.add(cookie);
+    let platform_user = PlatformUser::from_osu(&user);
+    set_jwt_cookie(cookies, &platform_user, &app_state.jwt_secret);
 
     Ok(Redirect::to("/ui"))
 }
@@ -189,26 +186,8 @@ pub async fn github_callback(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to fetch GitHub user: {}", e)))?;
 
-    let session_token = Uuid::new_v4().to_string();
-
-    let session = Session {
-        user: PlatformUser::from_github(&gh_user),
-        access_token: token_res.access_token,
-        refresh_token: None,
-        created_at: chrono::Utc::now(),
-    };
-
-    app_state.sessions.insert(session_token.clone(), session);
-
-    let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
-    cookie.set_http_only(true);
-    cookie.set_same_site(SameSite::Lax);
-    cookie.set_secure(true);
-    cookie.set_path("/");
-    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
-        cookie.set_max_age(rocket::time::Duration::days(30));
-    }
-    cookies.add(cookie);
+    let platform_user = PlatformUser::from_github(&gh_user);
+    set_jwt_cookie(cookies, &platform_user, &app_state.jwt_secret);
 
     Ok(Redirect::to("/ui"))
 }
@@ -283,36 +262,15 @@ pub async fn discord_callback(
         .await
         .map_err(|e| AppError::Internal(format!("Failed to fetch Discord user: {}", e)))?;
 
-    let session_token = Uuid::new_v4().to_string();
-
-    let session = Session {
-        user: PlatformUser::from_discord(&dc_user),
-        access_token: token_res.access_token,
-        refresh_token: token_res.refresh_token,
-        created_at: chrono::Utc::now(),
-    };
-
-    app_state.sessions.insert(session_token.clone(), session);
-
-    let mut cookie = Cookie::new(SESSION_COOKIE, session_token);
-    cookie.set_http_only(true);
-    cookie.set_same_site(SameSite::Lax);
-    cookie.set_secure(true);
-    cookie.set_path("/");
-    if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
-        cookie.set_max_age(rocket::time::Duration::days(30));
-    }
-    cookies.add(cookie);
+    let platform_user = PlatformUser::from_discord(&dc_user);
+    set_jwt_cookie(cookies, &platform_user, &app_state.jwt_secret);
 
     Ok(Redirect::to("/ui"))
 }
 
 #[get("/auth/logout")]
-pub fn logout(app_state: &State<AppState>, cookies: &CookieJar<'_>) -> Redirect {
-    if let Some(cookie) = cookies.get(SESSION_COOKIE) {
-        app_state.sessions.remove(cookie.value());
-        cookies.remove(Cookie::from(SESSION_COOKIE));
-    }
+pub fn logout(cookies: &CookieJar<'_>) -> Redirect {
+    cookies.remove(Cookie::from(SESSION_COOKIE));
     Redirect::to("/ui")
 }
 
@@ -338,17 +296,15 @@ pub fn me_unauthenticated() -> (Status, Json<serde_json::Value>) {
 #[get("/auth/refresh-cookie")]
 pub fn refresh_cookie(cookies: &CookieJar<'_>, app_state: &State<AppState>) -> Redirect {
     if let Some(session_cookie) = cookies.get(SESSION_COOKIE) {
-        let token = session_cookie.value().to_owned();
-        if app_state.sessions.contains_key(&token) {
-            let mut cookie = Cookie::new(SESSION_COOKIE, token);
-            cookie.set_http_only(true);
-            cookie.set_same_site(SameSite::Lax);
-            cookie.set_secure(true);
-            cookie.set_path("/");
-            if cookies.get("remember_me").map(|c| c.value()) == Some("true") {
-                cookie.set_max_age(rocket::time::Duration::days(30));
-            }
-            cookies.add(cookie);
+        let token = session_cookie.value();
+        if let Ok(claims) = validate_jwt(token, &app_state.jwt_secret) {
+            let user = PlatformUser {
+                provider: claims.provider,
+                id: claims.id,
+                username: claims.username,
+                avatar_url: claims.avatar_url,
+            };
+            set_jwt_cookie(cookies, &user, &app_state.jwt_secret);
         }
     }
     Redirect::to("/ui")

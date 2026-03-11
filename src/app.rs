@@ -101,12 +101,21 @@ pub fn run() -> Rocket<Build> {
         .wrap_err_with(|| format!("Could not create upload directory: {}", upload_dir))
         .expect("Failed to create upload dir");
 
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+        let secret = uuid::Uuid::new_v4().to_string();
+        tracing::warn!(
+            "JWT_SECRET not set — using auto-generated secret. Sessions will not survive restarts!"
+        );
+        secret
+    });
+
     let app_state = AppState::new(
         oauth_config,
         github_oauth,
         discord_oauth,
         admin_ids,
         upload_dir,
+        jwt_secret,
     );
 
     rocket::build()
@@ -249,6 +258,11 @@ pub fn run() -> Rocket<Build> {
                 routes::ui::ui_delete_text,
                 routes::ui::add_to_daily_queue,
                 routes::ui::remove_from_daily_queue,
+                routes::feed::feed_all,
+                routes::feed::feed_videos,
+                routes::feed::feed_audio,
+                routes::feed::feed_images,
+                routes::feed::feed_text,
             ],
         )
 }

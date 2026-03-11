@@ -20,6 +20,7 @@
   <meta name="twitter:description" content="{% block twitter_description %}Share media for free on {{ site_host | default(value="skibidi67.ceo") }}.{% endblock %}">
   {% endblock %}
 
+  <link rel="alternate" type="application/rss+xml" href="/feed" title="RSS Feed">
   {% block canonical %}{% endblock %}
 
   {% block structured_data %}

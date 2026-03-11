@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod auth;
+pub mod feed;
 pub mod images;
 pub mod media;
 pub mod text;
