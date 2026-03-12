@@ -40,17 +40,25 @@ fn build_feed(
     site: &SiteInfo,
     title: &str,
     filter: Option<&str>,
+    show_nsfw: bool,
 ) -> (ContentType, String) {
     let mut items: Vec<_> = state
         .videos
         .iter()
         .filter(|e| {
             let v = e.value();
-            !v.unlisted
-                && !v.nsfw
-                && filter
-                    .map(|prefix| v.content_type.starts_with(prefix))
-                    .unwrap_or(true)
+            if show_nsfw {
+                !v.unlisted
+                    && filter
+                        .map(|prefix| v.content_type.starts_with(prefix))
+                        .unwrap_or(true)
+            } else {
+                !v.unlisted
+                    && !v.nsfw
+                    && filter
+                        .map(|prefix| v.content_type.starts_with(prefix))
+                        .unwrap_or(true)
+            }
         })
         .map(|e| e.value().clone())
         .collect();
@@ -149,7 +157,6 @@ fn build_feed(
             host = xml_escape(&site.site_host),
         ));
 
-        // ---- enclosure / media:content for feed readers that support them ----
         let enclosure_xml =
             if v.content_type.starts_with("video/") || v.content_type.starts_with("audio/") {
                 format!(
@@ -211,27 +218,67 @@ fn build_feed(
     (ContentType::new("application", "rss+xml"), xml)
 }
 
-#[get("/ui/all.rss")]
-pub fn feed_all(state: &State<AppState>, site: SiteInfo) -> (ContentType, String) {
-    build_feed(state.inner(), &site, "All Recent Uploads", None)
+#[get("/feed?<show_nsfw>")]
+pub fn feed_all(state: &State<AppState>, site: SiteInfo, show_nsfw: bool) -> (ContentType, String) {
+    build_feed(state.inner(), &site, "All Recent Uploads", None, show_nsfw)
 }
 
-#[get("/ui/videos.rss")]
-pub fn feed_videos(state: &State<AppState>, site: SiteInfo) -> (ContentType, String) {
-    build_feed(state.inner(), &site, "Recent Videos", Some("video/"))
+#[get("/feed/videos?<show_nsfw>")]
+pub fn feed_videos(
+    state: &State<AppState>,
+    site: SiteInfo,
+    show_nsfw: bool,
+) -> (ContentType, String) {
+    build_feed(
+        state.inner(),
+        &site,
+        "Recent Videos",
+        Some("video/"),
+        show_nsfw,
+    )
 }
 
-#[get("/ui/audio.rss")]
-pub fn feed_audio(state: &State<AppState>, site: SiteInfo) -> (ContentType, String) {
-    build_feed(state.inner(), &site, "Recent Audio", Some("audio/"))
+#[get("/feed/audio?<show_nsfw>")]
+pub fn feed_audio(
+    state: &State<AppState>,
+    site: SiteInfo,
+    show_nsfw: bool,
+) -> (ContentType, String) {
+    build_feed(
+        state.inner(),
+        &site,
+        "Recent Audio",
+        Some("audio/"),
+        show_nsfw,
+    )
 }
 
-#[get("/ui/images.rss")]
-pub fn feed_images(state: &State<AppState>, site: SiteInfo) -> (ContentType, String) {
-    build_feed(state.inner(), &site, "Recent Images", Some("image/"))
+#[get("/feed/images?<show_nsfw>")]
+pub fn feed_images(
+    state: &State<AppState>,
+    site: SiteInfo,
+    show_nsfw: bool,
+) -> (ContentType, String) {
+    build_feed(
+        state.inner(),
+        &site,
+        "Recent Images",
+        Some("image/"),
+        show_nsfw,
+    )
 }
 
-#[get("/ui/text.rss")]
-pub fn feed_text(state: &State<AppState>, site: SiteInfo) -> (ContentType, String) {
-    build_feed(state.inner(), &site, "Recent Text", Some("text/"))
+#[get("/feed/text?<show_nsfw>")]
+pub fn feed_text(
+    state: &State<AppState>,
+    site: SiteInfo,
+    show_nsfw: bool,
+) -> (ContentType, String) {
+    build_feed(
+        state.inner(),
+        &site,
+        "Recent Text",
+        Some("text/"),
+        show_nsfw,
+    )
 }
