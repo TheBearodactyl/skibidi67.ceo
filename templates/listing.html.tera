@@ -47,13 +47,13 @@
       {% if user %}
       <p><strong>[NSFW]</strong> <span id="featured-gate"><a href="#" onclick="reveal_featured(); return false;">Click to view (18+ only)</a></span></p>
       <div id="featured-media" hidden>
-      <img id="featured-v" src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%">
+      <img id="featured-v" src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%; max-height: 40vh;">
       </div>
       {% else %}
       <p><strong>[NSFW]</strong> <a href="/auth/login">Log in to view</a></p>
       {% endif %}
     {% else %}
-    <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%" fetchpriority="high">
+    <img src="/images/{{ featured.id }}/file" alt="{{ featured.title }}" style="max-width:100%; max-height: 40vh;" fetchpriority="high">
     {% endif %}
   {% elif featured.media_type == "text" %}
     <pre id="featured-text" style="white-space:pre-wrap; word-wrap:break-word; background:var(--mantle); padding:1rem; border-radius:4px; max-height:20rem; overflow:auto;">Loading…</pre>
@@ -79,7 +79,7 @@
       {% endif %}
     {% else %}
     <div style="max-width:1280px">
-    <video controls preload="metadata" style="width:100%">
+    <video controls preload="metadata" style="width:100%; max-height: 40vh;">
       <source src="/videos/{{ featured.id }}/file" type="{{ featured.content_type }}">
     </video>
     </div>
